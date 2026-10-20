@@ -1,17 +1,19 @@
-"""Interfaz pública de búsqueda, detalles y localización física de productos de FerreteríaMS v0.
+"""Interfaz pública responsive de búsqueda, detalles, localización física y área visual Gemini («Próximamente») de FerreteríaMS v0.
 
 Proyecto: FerreteríaMS v0
-Tareas: FERMS-V0-P04, FERMS-V0-P05
+Tareas: FERMS-V0-P04, FERMS-V0-P05, FERMS-V0-P06
 Requisitos relacionados: RF-001, RF-002, RF-003, RF-004, RF-005, RF-006, RF-007, RF-008,
-RF-009, RF-024, RF-025, RF-028, RF-035, RF-036, RF-037, RF-038.
-Criterios relacionados: CA-001, CA-002, CA-003, CA-004, CA-005, CA-006, CA-007, CA-039,
-CA-040, CA-041, CA-042, CA-043.
+RF-009, RF-010, RF-024, RF-025, RF-028, RF-032, RF-033, RF-034, RF-035, RF-036, RF-037, RF-038.
+Criterios relacionados: CA-001, CA-002, CA-003, CA-004, CA-005, CA-006, CA-007, CA-008,
+CA-031, CA-032, CA-033, CA-034, CA-039, CA-040, CA-041, CA-042, CA-043, CA-060, CA-061.
 
 Adaptación de la plantilla académica a FerreteríaMS v0:
 - Conserva la estructura de inicialización de Streamlit (`st.set_page_config`, `st.title`,
   `st.caption`), el uso estructurado de `st.session_state` y el manejo explícito de errores.
 - Retira por completo las importaciones y llamadas al cliente de inteligencia artificial,
   la exigencia de clave de API para el asistente y la interfaz de chat operativa.
+- Incorpora la presentación visual responsive (escritorio, tableta y teléfono) y el área
+  visual reservada de «Asistente Gemini — Próximamente» sin capacidades operativas de IA en v0.
 - Reutiliza `03_Aplicacion/inventario.py`, `03_Aplicacion/github_inventario.py` y
   `03_Aplicacion/busqueda.py` sin duplicar sus responsabilidades ni realizar escrituras remotas.
 """
@@ -96,6 +98,21 @@ TEXTO_BOTON_VOLVER_RESULTADOS: str = "⬅️ Volver a los resultados"
 TITULO_SECCION_DETALLE_PRODUCTO: str = "Detalles del producto"
 TITULO_SECCION_UBICACION_PRINCIPAL: str = "Ubicación principal"
 TITULO_SECCION_UBICACIONES_SECUNDARIAS: str = "Ubicaciones secundarias"
+
+# Constantes del área visual de Gemini «Próximamente» y diseño responsive (Secciones 5, 6 y 7 del Prompt 06)
+RUTA_ARCHIVO_ESTILOS_CSS: Path = _DIRECTORIO_ACTUAL / "estilos.css"
+ETIQUETA_BANNER_SUPERIOR: str = "TU FERRETERÍA · LOCALIZACIÓN DE PRODUCTOS EN TIENDA"
+TITULO_SECCION_GEMINI: str = "Asistente Gemini"
+ESTADO_GEMINI_PROXIMAMENTE: str = "Próximamente"
+SUBTITULO_GEMINI_V0: str = "Asistencia con IA disponible en la entrega final"
+DESCRIPCION_GEMINI_V0: str = (
+    "En la versión final, podrás consultar orientación técnica sobre productos, "
+    "recomendaciones de herramientas y asesoría para tus proyectos de hogar, obra y taller."
+)
+NOTA_ESTADO_GEMINI_V0: str = (
+    "Funcionalidad informativa reservada en FerreteríaMS v0: actualmente no está habilitado "
+    "el asistente conversacional ni se realizan consultas a modelos de inteligencia artificial."
+)
 
 # Mensajes diferenciados para los estados del inventario remoto (Sección 8.2 del Prompt 04)
 MENSAJE_INVENTARIO_NO_INICIALIZADO: str = (
@@ -669,6 +686,46 @@ def _renderizar_controles_paginacion(
             st.rerun()
 
 
+def cargar_estilos_locales(ruta_css: Path = RUTA_ARCHIVO_ESTILOS_CSS) -> str:
+    """Lee el archivo CSS local justificado para el diseño responsive y accesible (Sección 7.4)."""
+    if not ruta_css.is_file():
+        return ""
+    return ruta_css.read_text(encoding="utf-8")
+
+
+def _aplicar_estilos_locales() -> None:
+    """Inyecta las reglas CSS locales de adaptación responsive en la página Streamlit."""
+    contenido_css = cargar_estilos_locales()
+    if contenido_css:
+        st.markdown(f"<style>\n{contenido_css}\n</style>", unsafe_allow_html=True)
+
+
+def _renderizar_banner_encabezado() -> None:
+    """Presenta la identidad visual de FerreteríaMS conforme al boceto conceptual de v0 (Sección 5.2)."""
+    st.title(f"{ICONO_PAGINA} {TITULO}")
+    st.caption(DESCRIPCION)
+    st.markdown(
+        f"""
+        <div class="ferms-banner-encabezado" role="region" aria-label="Presentación de FerreteríaMS">
+            <div class="ferms-banner-principal">
+                <span class="ferms-etiqueta-superior">{ETIQUETA_BANNER_SUPERIOR}</span>
+                <p class="ferms-marca-subtitulo">
+                    Localiza productos por su nombre y consulta su ubicación física exacta
+                    (<strong>Rack</strong>, <strong>Columna</strong>, <strong>Nivel</strong> y <strong>Posición</strong>)
+                    dentro de la ferretería desde tu computadora, tableta o teléfono.
+                </p>
+            </div>
+            <div class="ferms-banner-pilares" aria-label="Características del servicio de consulta">
+                <span class="ferms-pilar-item">🛠️ Todo para tus proyectos</span>
+                <span class="ferms-pilar-item">📍 Ubicación física en tienda</span>
+                <span class="ferms-pilar-item">🏠 Hogar, obra y taller</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _renderizar_estado_inicial() -> None:
     """Presenta el estado inicial antes de realizar cualquier búsqueda (Sección 7.2 e imagen conceptual)."""
     with st.container(border=True):
@@ -677,22 +734,41 @@ def _renderizar_estado_inicial() -> None:
         st.caption(TEXTO_AYUDA_EJEMPLOS)
 
 
-def renderizar_aplicacion(
+def _renderizar_seccion_gemini_proximamente() -> None:
+    """Presenta el área visual reservada para el Asistente Gemini en v0 (Sección 6, RF-032..RF-034, CA-031..CA-033).
+
+    Garantiza:
+    - Identificación clara como «Asistente Gemini» y estado «Próximamente».
+    - Información descriptiva estática sobre su futuro propósito en la entrega final.
+    - Ausencia total de cuadros de chat, botones engañosos, clientes de IA o llamadas a Gemini API.
+    """
+    with st.container(border=True):
+        st.subheader(f"✨ {TITULO_SECCION_GEMINI}")
+        st.markdown(f"**Estado:** `{ESTADO_GEMINI_PROXIMAMENTE}`")
+        st.markdown(
+            f"""
+            <div class="ferms-gemini-panel" role="region" aria-label="{TITULO_SECCION_GEMINI} — {ESTADO_GEMINI_PROXIMAMENTE}">
+                <div class="ferms-gemini-cabecera">
+                    <span class="ferms-gemini-titulo">✨ {TITULO_SECCION_GEMINI}</span>
+                    <span class="ferms-gemini-badge">{ESTADO_GEMINI_PROXIMAMENTE}</span>
+                </div>
+                <div class="ferms-gemini-icono" aria-hidden="true">🤖</div>
+                <p class="ferms-gemini-subtitulo">{SUBTITULO_GEMINI_V0}</p>
+                <p class="ferms-gemini-descripcion">{DESCRIPCION_GEMINI_V0}</p>
+                <div class="ferms-gemini-nota-estado">{NOTA_ESTADO_GEMINI_V0}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "Próximamente en la entrega final · Sin chat activo en FerreteríaMS v0."
+        )
+
+
+def _renderizar_area_inventario(
     descargador_remoto: DescargadorRemoto | None = None,
 ) -> None:
-    """Construye y renderiza la interfaz pública principal de FerreteríaMS v0 en Streamlit."""
-    st.set_page_config(
-        page_title=TITULO,
-        page_icon=ICONO_PAGINA,
-        layout="wide",
-    )
-    inicializar_estado_sesion()
-
-    # Encabezado principal conforme a la imagen conceptual de inicio v0 (Sección 7.1)
-    st.title(f"{ICONO_PAGINA} {TITULO}")
-    st.caption(DESCRIPCION)
-    st.divider()
-
+    """Renderiza el área principal de búsqueda pública, resultados paginados, detalles y ubicaciones."""
     # Sección pública de búsqueda exclusivamente por nombre de producto (RF-001, CA-043)
     st.subheader(f"🔍 {TITULO_SECCION_BUSQUEDA}")
     st.write(f"{MENSAJE_INICIAL_BUSQUEDA}.")
@@ -828,6 +904,35 @@ def renderizar_aplicacion(
 
     st.divider()
     st.info(f"ℹ️ {AVISO_ACCESO_PUBLICO}")
+
+
+def renderizar_aplicacion(
+    descargador_remoto: DescargadorRemoto | None = None,
+) -> None:
+    """Construye y renderiza la interfaz pública responsive de FerreteríaMS v0 en Streamlit.
+
+    Distribución responsive (Sección 7 del Prompt 06):
+    - Escritorio: Dos áreas diferenciadas en paralelo (`col_inventario` a la izquierda y `col_gemini` a la derecha).
+    - Tableta y teléfono: Apilamiento vertical automático (1. Encabezado FerreteríaMS, 2. Buscador,
+      3. Resultados o detalles, 4. Área Gemini «Próximamente») sin desplazamiento horizontal.
+    """
+    st.set_page_config(
+        page_title=TITULO,
+        page_icon=ICONO_PAGINA,
+        layout="wide",
+    )
+    _aplicar_estilos_locales()
+    inicializar_estado_sesion()
+
+    # 1. Encabezado e identidad visual de FerreteríaMS (Secciones 5.1 y 5.2)
+    _renderizar_banner_encabezado()
+
+    # 2. Composición responsive: Inventario a la izquierda y Gemini «Próximamente» a la derecha (Sección 7)
+    col_inventario, col_gemini = st.columns([2.35, 1], gap="large")
+    with col_inventario:
+        _renderizar_area_inventario(descargador_remoto=descargador_remoto)
+    with col_gemini:
+        _renderizar_seccion_gemini_proximamente()
 
 
 if __name__ == "__main__":
