@@ -1,13 +1,16 @@
-"""Motor de búsqueda pública de productos por nombre y paginación de resultados.
+"""Motor de búsqueda pública de productos por nombre, paginación y consulta de detalles/ubicaciones.
 
 Proyecto: FerreteríaMS v0
-Tarea: FERMS-V0-P04
-Requisitos relacionados: RF-001, RF-002, RF-003, RF-004, RF-008, RF-009, RF-024, RF-035, RF-036, RF-037.
-Criterios relacionados: CA-001, CA-002, CA-003, CA-004, CA-006, CA-007, CA-039, CA-040, CA-041, CA-043.
+Tareas: FERMS-V0-P04, FERMS-V0-P05
+Requisitos relacionados: RF-001, RF-002, RF-003, RF-004, RF-005, RF-006, RF-007, RF-008,
+RF-009, RF-024, RF-035, RF-036, RF-037.
+Criterios relacionados: CA-001, CA-002, CA-003, CA-004, CA-005, CA-006, CA-007, CA-039,
+CA-040, CA-041, CA-043.
 
 Este módulo recibe información estructurada del inventario y devuelve coincidencias
 calculadas exclusivamente sobre el campo `Nombre` de la hoja `Productos`, ordenadas
-por relevancia y paginadas de diez en diez.
+por relevancia y paginadas de diez en diez, así como el detalle estructurado y las
+ubicaciones físicas (principal y secundarias) de un producto seleccionado.
 No realiza conexiones directas con GitHub API ni duplica las validaciones de `inventario.py`.
 """
 
@@ -31,10 +34,12 @@ from inventario import (  # noqa: E402
     HOJA_CATEGORIAS,
     HOJA_PRODUCTOS,
     InventarioDatos,
+    obtener_producto_por_codigo,
     obtener_productos_estructurados,
+    validar_inventario,
 )
 
-# Constantes aprobadas en 02_Especificaciones_v0.md y 02_Prompts/04_Busqueda_Publica.md
+# Constantes aprobadas en 02_Especificaciones_v0.md, 02_Prompts/04_Busqueda_Publica.md y 05_Detalles_Ubicaciones.md
 TAMANO_PAGINA_DEFECTO: int = 10
 
 MENSAJE_INICIAL_BUSQUEDA: str = "Escribe el nombre del producto que deseas encontrar"
@@ -42,6 +47,17 @@ MENSAJE_BUSCANDO_PRODUCTOS: str = "Buscando productos…"
 MENSAJE_PRODUCTO_NO_ENCONTRADO: str = "No encontramos este producto en nuestro inventario"
 MENSAJE_BUSQUEDA_VACIA: str = (
     "Por favor, escribe el nombre de un producto antes de presionar Buscar."
+)
+
+TEXTO_SIN_DESCRIPCION: str = "Sin descripción registrada."
+MENSAJE_SIN_UBICACIONES_SECUNDARIAS: str = (
+    "Este producto solamente tiene una ubicación física registrada (sin ubicaciones secundarias)."
+)
+MENSAJE_PRODUCTO_SELECCIONADO_NO_DISPONIBLE: str = (
+    "El producto seleccionado no está disponible en la consulta actual."
+)
+MENSAJE_ERROR_INTEGRIDAD_DETALLE: str = (
+    "Se detectó una inconsistencia de integridad en los datos de ubicación o registro del producto."
 )
 
 # Campos de búsqueda expresamente prohibidos como filtros independientes en v0 (RF-001, CA-043)
@@ -362,8 +378,18 @@ def buscar_productos_por_nombre(
         descripcion = str(item.get("descripcion", "")).strip()
 
         ubic_prin_raw = item.get("ubicacion_principal")
+        ubic_prin_dict = (
+            dict(ubic_prin_raw) if isinstance(ubic_prin_raw, Mapping) else None
+        )
         ubic_sec_raw = item.get("ubicaciones_secundarias") or ()
-        todas_ubic_raw = item.get("todas_las_ubicaciones") or ()
+        ubic_sec_ordenadas = _ordenar_ubicaciones_secundarias_dict(
+            ubic_sec_raw,
+            ubicacion_principal=ubic_prin_dict,
+        )
+        todas_ubic_ordenadas = (
+            ([ubic_prin_dict] if ubic_prin_dict is not None else [])
+            + ubic_sec_ordenadas
+        )
 
         producto = ProductoCoincidente(
             codigo_producto=codigo_original,
@@ -372,15 +398,9 @@ def buscar_productos_por_nombre(
             nombre_categoria=nombre_categoria,
             prioridad=prioridad,
             descripcion=descripcion,
-            ubicacion_principal=(
-                dict(ubic_prin_raw) if isinstance(ubic_prin_raw, Mapping) else None
-            ),
-            ubicaciones_secundarias=tuple(
-                dict(u) for u in ubic_sec_raw if isinstance(u, Mapping)
-            ),
-            todas_las_ubicaciones=tuple(
-                dict(u) for u in todas_ubic_raw if isinstance(u, Mapping)
-            ),
+            ubicacion_principal=ubic_prin_dict,
+            ubicaciones_secundarias=tuple(ubic_sec_ordenadas),
+            todas_las_ubicaciones=tuple(todas_ubic_ordenadas),
         )
 
         clave_orden = (prioridad.value, nombre_norm, codigo_original)
@@ -491,4 +511,383 @@ def ejecutar_busqueda_productos(
         total_paginas=total_paginas,
         mensaje_usuario=mensaje_exito,
     )
+
+
+class EstadoDetalleProducto(str, Enum):
+    """Estados posibles al consultar el detalle y las ubicaciones de un producto seleccionado (Prompt 05)."""
+
+    SIN_SELECCION = "SIN_SELECCION"
+    DETALLE_DISPONIBLE = "DETALLE_DISPONIBLE"
+    PRODUCTO_NO_DISPONIBLE = "PRODUCTO_NO_DISPONIBLE"
+    ERROR_INTEGRIDAD_UBICACION = "ERROR_INTEGRIDAD_UBICACION"
+
+
+def formatear_cadena_ubicacion(ubicacion: Mapping[str, Any] | UbicacionFisicaDetalle) -> str:
+    """Devuelve la disposición visual clara de una ubicación física (Sección 6 del Prompt 05).
+
+    Formato: `Rack {rack} → Columna {columna} → Nivel {nivel} → Posición {posicion}`
+    Conserva intactos los valores originales del inventario sin reinterpretarlos.
+    """
+    if isinstance(ubicacion, UbicacionFisicaDetalle):
+        rack = ubicacion.rack
+        columna = ubicacion.columna
+        nivel = ubicacion.nivel
+        posicion = ubicacion.posicion
+    elif isinstance(ubicacion, Mapping):
+        rack = str(ubicacion.get("rack", ubicacion.get("Rack", ""))).strip()
+        columna = str(ubicacion.get("columna", ubicacion.get("Columna", ""))).strip()
+        nivel = str(ubicacion.get("nivel", ubicacion.get("Nivel", ""))).strip()
+        posicion = str(ubicacion.get("posicion", ubicacion.get("Posicion", ""))).strip()
+    else:
+        raise TypeError(f"Tipo de ubicación no soportado: {type(ubicacion).__name__}.")
+
+    return f"Rack {rack} → Columna {columna} → Nivel {nivel} → Posición {posicion}"
+
+
+def _clave_orden_ubicacion_dict(ubic: Mapping[str, Any]) -> tuple[str, str, str, str, str]:
+    """Clave determinista y estable para ordenar ubicaciones físicas."""
+    rack = str(ubic.get("rack", ubic.get("Rack", ""))).strip()
+    columna = str(ubic.get("columna", ubic.get("Columna", ""))).strip()
+    nivel = str(ubic.get("nivel", ubic.get("Nivel", ""))).strip()
+    posicion = str(ubic.get("posicion", ubic.get("Posicion", ""))).strip()
+    ubic_id = str(ubic.get("ubicacion_id", ubic.get("Ubicacion_ID", ""))).strip()
+    return (rack, columna, nivel, posicion, ubic_id)
+
+
+def _ordenar_ubicaciones_secundarias_dict(
+    ubicaciones_secundarias: Iterable[Mapping[str, Any]],
+    *,
+    ubicacion_principal: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Ordena de forma estable las ubicaciones secundarias y evita duplicar la ubicación principal (Sección 7)."""
+    id_principal = ""
+    coord_principal: tuple[str, str, str, str] | None = None
+    if isinstance(ubicacion_principal, Mapping):
+        id_principal = str(
+            ubicacion_principal.get(
+                "ubicacion_id", ubicacion_principal.get("Ubicacion_ID", "")
+            )
+        ).strip()
+        coord_principal = (
+            str(ubicacion_principal.get("rack", ubicacion_principal.get("Rack", ""))).strip(),
+            str(ubicacion_principal.get("columna", ubicacion_principal.get("Columna", ""))).strip(),
+            str(ubicacion_principal.get("nivel", ubicacion_principal.get("Nivel", ""))).strip(),
+            str(ubicacion_principal.get("posicion", ubicacion_principal.get("Posicion", ""))).strip(),
+        )
+
+    ids_vistos: set[str] = set()
+    coords_vistas: set[tuple[str, str, str, str]] = set()
+    filtradas: list[dict[str, Any]] = []
+
+    for item in ubicaciones_secundarias:
+        if not isinstance(item, Mapping):
+            continue
+        copia = dict(item)
+        ubic_id = str(copia.get("ubicacion_id", copia.get("Ubicacion_ID", ""))).strip()
+        coord = (
+            str(copia.get("rack", copia.get("Rack", ""))).strip(),
+            str(copia.get("columna", copia.get("Columna", ""))).strip(),
+            str(copia.get("nivel", copia.get("Nivel", ""))).strip(),
+            str(copia.get("posicion", copia.get("Posicion", ""))).strip(),
+        )
+
+        if id_principal and ubic_id == id_principal:
+            continue
+        if coord_principal is not None and any(coord_principal) and coord == coord_principal:
+            continue
+        if ubic_id and ubic_id in ids_vistos:
+            continue
+        if any(coord) and coord in coords_vistas:
+            continue
+
+        if ubic_id:
+            ids_vistos.add(ubic_id)
+        if any(coord):
+            coords_vistas.add(coord)
+        filtradas.append(copia)
+
+    filtradas.sort(key=_clave_orden_ubicacion_dict)
+    return filtradas
+
+
+@dataclass(frozen=True)
+class UbicacionFisicaDetalle:
+    """Representación inmutable de una ubicación física validada (RF-006, RF-007)."""
+
+    ubicacion_id: str
+    rack: str
+    columna: str
+    nivel: str
+    posicion: str
+    es_principal: bool
+
+    @property
+    def etiqueta_flechas(self) -> str:
+        """Devuelve la cadena `Rack X → Columna Y → Nivel Z → Posición W`."""
+        return formatear_cadena_ubicacion(self)
+
+    def a_diccionario(self) -> dict[str, Any]:
+        return {
+            "ubicacion_id": self.ubicacion_id,
+            "rack": self.rack,
+            "columna": self.columna,
+            "nivel": self.nivel,
+            "posicion": self.posicion,
+            "es_principal": self.es_principal,
+            "principal": "Sí" if self.es_principal else "No",
+            "etiqueta": self.etiqueta_flechas,
+        }
+
+
+@dataclass(frozen=True)
+class DetalleProductoLocalizado:
+    """Información descriptiva y localización física completa de un producto seleccionado (RF-005, RF-006, RF-007)."""
+
+    codigo_producto: str
+    nombre: str
+    categoria_id: str
+    nombre_categoria: str
+    descripcion: str
+    ubicacion_principal: UbicacionFisicaDetalle
+    ubicaciones_secundarias: tuple[UbicacionFisicaDetalle, ...] = ()
+
+    @property
+    def tiene_descripcion(self) -> bool:
+        return bool(self.descripcion.strip())
+
+    @property
+    def descripcion_presentacion(self) -> str:
+        """Devuelve la descripción original o un texto neutro cuando está vacía (Sección 5)."""
+        return self.descripcion if self.tiene_descripcion else TEXTO_SIN_DESCRIPCION
+
+    @property
+    def tiene_ubicaciones_secundarias(self) -> bool:
+        return len(self.ubicaciones_secundarias) > 0
+
+    @property
+    def total_ubicaciones(self) -> int:
+        return 1 + len(self.ubicaciones_secundarias)
+
+    @property
+    def todas_las_ubicaciones(self) -> tuple[UbicacionFisicaDetalle, ...]:
+        return (self.ubicacion_principal, *self.ubicaciones_secundarias)
+
+
+@dataclass(frozen=True)
+class ResultadoConsultaDetalle:
+    """Resultado estructurado al consultar los detalles y ubicaciones de un producto seleccionado."""
+
+    estado: EstadoDetalleProducto
+    codigo_solicitado: str
+    mensaje_usuario: str
+    detalle: DetalleProductoLocalizado | None = None
+    detalle_error: str = ""
+
+    @property
+    def tiene_detalle(self) -> bool:
+        return (
+            self.estado == EstadoDetalleProducto.DETALLE_DISPONIBLE
+            and self.detalle is not None
+        )
+
+
+def _construir_ubicacion_detalle_desde_mapping(
+    datos_ubic: Mapping[str, Any],
+    *,
+    es_principal: bool,
+) -> UbicacionFisicaDetalle | None:
+    """Construye y verifica que una ubicación física posea todos sus campos requeridos."""
+    ubic_id = str(
+        datos_ubic.get("ubicacion_id", datos_ubic.get("Ubicacion_ID", ""))
+    ).strip()
+    rack = str(datos_ubic.get("rack", datos_ubic.get("Rack", ""))).strip()
+    columna = str(datos_ubic.get("columna", datos_ubic.get("Columna", ""))).strip()
+    nivel = str(datos_ubic.get("nivel", datos_ubic.get("Nivel", ""))).strip()
+    posicion = str(datos_ubic.get("posicion", datos_ubic.get("Posicion", ""))).strip()
+
+    if not ubic_id or not rack or not columna or not nivel or not posicion:
+        return None
+
+    return UbicacionFisicaDetalle(
+        ubicacion_id=ubic_id,
+        rack=rack,
+        columna=columna,
+        nivel=nivel,
+        posicion=posicion,
+        es_principal=es_principal,
+    )
+
+
+def consultar_detalle_producto(
+    inventario: InventarioDatos | None,
+    codigo_producto: Any,
+    *,
+    resultados_activos: Sequence[ProductoCoincidente] | None = None,
+) -> ResultadoConsultaDetalle:
+    """Recupera los detalles y ubicaciones físicas de un producto desde el inventario validado.
+
+    Cumple las Secciones 4, 5, 6, 7 y 8 del Prompt 05:
+    - Exige que `codigo_producto` se conserve como texto (`str`), incluidos los ceros iniciales,
+      rechazando conversiones numéricas automáticas (`int`, `float`, `bool`).
+    - Reutiliza `validar_inventario` y `obtener_producto_por_codigo` de `inventario.py` sin
+      volver a implementar por separado las relaciones entre las cuatro hojas.
+    - Si detecta alguna inconsistencia de integridad en los datos del inventario (p. ej. producto
+      sin ubicación principal, con múltiples ubicaciones principales o con referencias rotas),
+      la comunica como `ERROR_INTEGRIDAD_UBICACION` sin corregirla silenciosamente.
+    - Si el código no pertenece al inventario validado de la búsqueda activa, devuelve
+      `PRODUCTO_NO_DISPONIBLE` sin exponer datos de otro producto ni inventar ubicaciones.
+    - Ordena las ubicaciones secundarias de forma estable y reproducible sin duplicar la principal.
+    """
+    if codigo_producto is None:
+        return ResultadoConsultaDetalle(
+            estado=EstadoDetalleProducto.SIN_SELECCION,
+            codigo_solicitado="",
+            mensaje_usuario="",
+        )
+
+    # Prohibición de convertir automáticamente códigos a números (Secciones 4.1 y 5)
+    if not isinstance(codigo_producto, str):
+        return ResultadoConsultaDetalle(
+            estado=EstadoDetalleProducto.PRODUCTO_NO_DISPONIBLE,
+            codigo_solicitado=str(codigo_producto),
+            mensaje_usuario=MENSAJE_PRODUCTO_SELECCIONADO_NO_DISPONIBLE,
+        )
+
+    codigo_limpio = codigo_producto.strip()
+    if not codigo_limpio:
+        return ResultadoConsultaDetalle(
+            estado=EstadoDetalleProducto.SIN_SELECCION,
+            codigo_solicitado="",
+            mensaje_usuario="",
+        )
+
+    if inventario is None or not isinstance(inventario, InventarioDatos):
+        return ResultadoConsultaDetalle(
+            estado=EstadoDetalleProducto.PRODUCTO_NO_DISPONIBLE,
+            codigo_solicitado=codigo_limpio,
+            mensaje_usuario=MENSAJE_PRODUCTO_SELECCIONADO_NO_DISPONIBLE,
+        )
+
+    # Comprobar integridad estructural y relacional mediante `inventario.py` (Sección 6)
+    try:
+        hojas = inventario.obtener_hojas()
+        resultado_val = validar_inventario(hojas, lanzar_excepcion=False)
+    except Exception as exc_val:
+        return ResultadoConsultaDetalle(
+            estado=EstadoDetalleProducto.ERROR_INTEGRIDAD_UBICACION,
+            codigo_solicitado=codigo_limpio,
+            mensaje_usuario=MENSAJE_ERROR_INTEGRIDAD_DETALLE,
+            detalle_error=str(exc_val),
+        )
+
+    if not resultado_val.es_valido:
+        resumen_errores = "; ".join(err.mensaje for err in resultado_val.errores)
+        return ResultadoConsultaDetalle(
+            estado=EstadoDetalleProducto.ERROR_INTEGRIDAD_UBICACION,
+            codigo_solicitado=codigo_limpio,
+            mensaje_usuario=MENSAJE_ERROR_INTEGRIDAD_DETALLE,
+            detalle_error=resumen_errores,
+        )
+
+    # Si existe una lista de resultados activos en la consulta, el código debe pertenecer a ella (Sección 4.4)
+    if resultados_activos is not None:
+        codigos_en_consulta = {
+            prod.codigo_producto
+            for prod in resultados_activos
+            if isinstance(prod, ProductoCoincidente)
+        }
+        if codigo_limpio not in codigos_en_consulta:
+            return ResultadoConsultaDetalle(
+                estado=EstadoDetalleProducto.PRODUCTO_NO_DISPONIBLE,
+                codigo_solicitado=codigo_limpio,
+                mensaje_usuario=MENSAJE_PRODUCTO_SELECCIONADO_NO_DISPONIBLE,
+            )
+
+    # Reutilizar `obtener_producto_por_codigo` de `inventario.py` (Sección 8.1)
+    datos_producto = obtener_producto_por_codigo(inventario, codigo_limpio)
+    if datos_producto is None:
+        return ResultadoConsultaDetalle(
+            estado=EstadoDetalleProducto.PRODUCTO_NO_DISPONIBLE,
+            codigo_solicitado=codigo_limpio,
+            mensaje_usuario=MENSAJE_PRODUCTO_SELECCIONADO_NO_DISPONIBLE,
+        )
+
+    ubic_prin_raw = datos_producto.get("ubicacion_principal")
+    if not isinstance(ubic_prin_raw, Mapping):
+        return ResultadoConsultaDetalle(
+            estado=EstadoDetalleProducto.ERROR_INTEGRIDAD_UBICACION,
+            codigo_solicitado=codigo_limpio,
+            mensaje_usuario=MENSAJE_ERROR_INTEGRIDAD_DETALLE,
+            detalle_error=f"El producto '{codigo_limpio}' no posee una ubicación principal válida.",
+        )
+
+    ubicacion_principal = _construir_ubicacion_detalle_desde_mapping(
+        ubic_prin_raw,
+        es_principal=True,
+    )
+    if ubicacion_principal is None:
+        return ResultadoConsultaDetalle(
+            estado=EstadoDetalleProducto.ERROR_INTEGRIDAD_UBICACION,
+            codigo_solicitado=codigo_limpio,
+            mensaje_usuario=MENSAJE_ERROR_INTEGRIDAD_DETALLE,
+            detalle_error=(
+                f"La ubicación principal del producto '{codigo_limpio}' tiene campos físicos incompletos."
+            ),
+        )
+
+    ubic_sec_raw = datos_producto.get("ubicaciones_secundarias") or ()
+    ubic_sec_ordenadas_dict = _ordenar_ubicaciones_secundarias_dict(
+        ubic_sec_raw,
+        ubicacion_principal=ubic_prin_raw,
+    )
+
+    ubicaciones_secundarias: list[UbicacionFisicaDetalle] = []
+    for item_sec in ubic_sec_ordenadas_dict:
+        ubic_sec_obj = _construir_ubicacion_detalle_desde_mapping(
+            item_sec,
+            es_principal=False,
+        )
+        if ubic_sec_obj is None:
+            return ResultadoConsultaDetalle(
+                estado=EstadoDetalleProducto.ERROR_INTEGRIDAD_UBICACION,
+                codigo_solicitado=codigo_limpio,
+                mensaje_usuario=MENSAJE_ERROR_INTEGRIDAD_DETALLE,
+                detalle_error=(
+                    f"Una ubicación secundaria del producto '{codigo_limpio}' tiene campos físicos incompletos."
+                ),
+            )
+        ubicaciones_secundarias.append(ubic_sec_obj)
+
+    nombre_prod = str(datos_producto.get("nombre", "")).strip()
+    categoria_id = str(datos_producto.get("categoria_id", "")).strip()
+    nombre_categoria = str(datos_producto.get("nombre_categoria", "")).strip()
+    descripcion = str(datos_producto.get("descripcion", "")).strip()
+
+    if not nombre_prod or not categoria_id or not nombre_categoria:
+        return ResultadoConsultaDetalle(
+            estado=EstadoDetalleProducto.ERROR_INTEGRIDAD_UBICACION,
+            codigo_solicitado=codigo_limpio,
+            mensaje_usuario=MENSAJE_ERROR_INTEGRIDAD_DETALLE,
+            detalle_error=(
+                f"Los datos generales o la categoría del producto '{codigo_limpio}' están incompletos."
+            ),
+        )
+
+    detalle = DetalleProductoLocalizado(
+        codigo_producto= str(datos_producto.get("codigo_producto", codigo_limpio)).strip(),
+        nombre=nombre_prod,
+        categoria_id=categoria_id,
+        nombre_categoria=nombre_categoria,
+        descripcion=descripcion,
+        ubicacion_principal=ubicacion_principal,
+        ubicaciones_secundarias=tuple(ubicaciones_secundarias),
+    )
+
+    return ResultadoConsultaDetalle(
+        estado=EstadoDetalleProducto.DETALLE_DISPONIBLE,
+        codigo_solicitado=detalle.codigo_producto,
+        mensaje_usuario=f"Detalles y ubicación de «{detalle.nombre}».",
+        detalle=detalle,
+    )
+
 

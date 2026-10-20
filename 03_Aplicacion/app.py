@@ -1,11 +1,11 @@
-"""Interfaz pública de búsqueda de productos de FerreteríaMS v0.
+"""Interfaz pública de búsqueda, detalles y localización física de productos de FerreteríaMS v0.
 
 Proyecto: FerreteríaMS v0
-Tarea: FERMS-V0-P04
-Requisitos relacionados: RF-001, RF-002, RF-003, RF-004, RF-008, RF-009, RF-024, RF-025,
-RF-028, RF-035, RF-036, RF-037, RF-038.
-Criterios relacionados: CA-001, CA-002, CA-003, CA-004, CA-006, CA-007, CA-039, CA-040,
-CA-041, CA-042, CA-043.
+Tareas: FERMS-V0-P04, FERMS-V0-P05
+Requisitos relacionados: RF-001, RF-002, RF-003, RF-004, RF-005, RF-006, RF-007, RF-008,
+RF-009, RF-024, RF-025, RF-028, RF-035, RF-036, RF-037, RF-038.
+Criterios relacionados: CA-001, CA-002, CA-003, CA-004, CA-005, CA-006, CA-007, CA-039,
+CA-040, CA-041, CA-042, CA-043.
 
 Adaptación de la plantilla académica a FerreteríaMS v0:
 - Conserva la estructura de inicialización de Streamlit (`st.set_page_config`, `st.title`,
@@ -34,14 +34,24 @@ import github_inventario  # noqa: E402
 from busqueda import (  # noqa: E402
     MENSAJE_BUSCANDO_PRODUCTOS,
     MENSAJE_BUSQUEDA_VACIA,
+    MENSAJE_ERROR_INTEGRIDAD_DETALLE,
     MENSAJE_INICIAL_BUSQUEDA,
     MENSAJE_PRODUCTO_NO_ENCONTRADO,
+    MENSAJE_PRODUCTO_SELECCIONADO_NO_DISPONIBLE,
+    MENSAJE_SIN_UBICACIONES_SECUNDARIAS,
     TAMANO_PAGINA_DEFECTO,
+    TEXTO_SIN_DESCRIPCION,
+    DetalleProductoLocalizado,
     EstadoBusqueda,
+    EstadoDetalleProducto,
     ProductoCoincidente,
     ResultadoBusquedaPaginada,
+    ResultadoConsultaDetalle,
+    UbicacionFisicaDetalle,
+    consultar_detalle_producto,
     ejecutar_busqueda_productos,
     es_termino_busqueda_vacio,
+    formatear_cadena_ubicacion,
     normalizar_texto_busqueda,
     resolver_pagina_busqueda,
 )
@@ -79,6 +89,13 @@ AVISO_ACCESO_PUBLICO: str = (
 MENSAJE_CAMBIO_TERMINO_PENDIENTE: str = (
     "Has modificado el término en el buscador. Presiona «Buscar» para consultar los resultados."
 )
+
+# Constantes de selección y vista de detalle de producto (Secciones 4, 5, 6, 7 y 9 del Prompt 05)
+TEXTO_BOTON_VER_DETALLE: str = "Ver detalles y ubicación"
+TEXTO_BOTON_VOLVER_RESULTADOS: str = "⬅️ Volver a los resultados"
+TITULO_SECCION_DETALLE_PRODUCTO: str = "Detalles del producto"
+TITULO_SECCION_UBICACION_PRINCIPAL: str = "Ubicación principal"
+TITULO_SECCION_UBICACIONES_SECUNDARIAS: str = "Ubicaciones secundarias"
 
 # Mensajes diferenciados para los estados del inventario remoto (Sección 8.2 del Prompt 04)
 MENSAJE_INVENTARIO_NO_INICIALIZADO: str = (
@@ -181,14 +198,85 @@ def _es_misma_busqueda_activa(
 
 
 def preparar_seleccion_producto_para_detalle(
-    codigo_producto: str | None,
+    codigo_producto: Any,
     estado: MutableMapping[str, Any] | None = None,
 ) -> None:
-    """Punto de extensión preparado para integrar la selección y detalle en el Prompt 05 (Sección 7.4)."""
-    destino: MutableMapping[str, Any] = estado if estado is not None else st.session_state
-    destino[CLAVE_PRODUCTO_SELECCIONADO] = (
-        str(codigo_producto).strip() if codigo_producto else None
+    """Registra en el estado de sesión el código del producto seleccionado (Sección 4 del Prompt 05)."""
+    destino = inicializar_estado_sesion(estado)
+    if codigo_producto is None:
+        destino[CLAVE_PRODUCTO_SELECCIONADO] = None
+    elif isinstance(codigo_producto, str):
+        limpio = codigo_producto.strip()
+        destino[CLAVE_PRODUCTO_SELECCIONADO] = limpio if limpio else None
+    else:
+        # Si se recibe un tipo no textual (p. ej. int), se conserva para que la validación lo rechace
+        destino[CLAVE_PRODUCTO_SELECCIONADO] = codigo_producto
+
+
+def obtener_detalle_producto_en_sesion(
+    estado: MutableMapping[str, Any] | None = None,
+) -> ResultadoConsultaDetalle:
+    """Recupera el detalle y las ubicaciones del producto seleccionado usando el inventario validado en sesión.
+
+    Cumple las Secciones 4.2, 4.4 y 8.4 del Prompt 05:
+    - No realiza descargas nuevas desde GitHub al abrir o consultar el detalle.
+    - Utiliza exclusivamente el inventario validado (`CLAVE_INVENTARIO_SESION`) de la búsqueda activa.
+    - Verifica que el código seleccionado pertenezca a la consulta activa.
+    """
+    destino = inicializar_estado_sesion(estado)
+    codigo_seleccionado = destino.get(CLAVE_PRODUCTO_SELECCIONADO)
+
+    if codigo_seleccionado is None or (
+        isinstance(codigo_seleccionado, str) and not codigo_seleccionado.strip()
+    ):
+        return ResultadoConsultaDetalle(
+            estado=EstadoDetalleProducto.SIN_SELECCION,
+            codigo_solicitado="",
+            mensaje_usuario="",
+        )
+
+    inventario_sesion: InventarioDatos | None = destino.get(CLAVE_INVENTARIO_SESION)
+    respuesta_busqueda: RespuestaInterfazBusqueda | None = destino.get(
+        CLAVE_RESPUESTA_BUSQUEDA
     )
+
+    resultados_activos = None
+    if respuesta_busqueda is not None:
+        if (
+            respuesta_busqueda.estado_operativo
+            != EstadoOperativoInterfaz.RESULTADOS_ENCONTRADOS
+            or respuesta_busqueda.resultado_busqueda is None
+        ):
+            return ResultadoConsultaDetalle(
+                estado=EstadoDetalleProducto.PRODUCTO_NO_DISPONIBLE,
+                codigo_solicitado=str(codigo_seleccionado),
+                mensaje_usuario=MENSAJE_PRODUCTO_SELECCIONADO_NO_DISPONIBLE,
+            )
+        resultados_activos = respuesta_busqueda.resultado_busqueda.todos_los_resultados
+
+    return consultar_detalle_producto(
+        inventario_sesion,
+        codigo_seleccionado,
+        resultados_activos=resultados_activos,
+    )
+
+
+def seleccionar_producto_en_sesion(
+    codigo_producto: Any,
+    estado: MutableMapping[str, Any] | None = None,
+) -> ResultadoConsultaDetalle:
+    """Selecciona un producto por su código exacto y devuelve su detalle desde el inventario en sesión."""
+    destino = inicializar_estado_sesion(estado)
+    preparar_seleccion_producto_para_detalle(codigo_producto, estado=destino)
+    return obtener_detalle_producto_en_sesion(estado=destino)
+
+
+def volver_a_resultados_en_sesion(
+    estado: MutableMapping[str, Any] | None = None,
+) -> None:
+    """Cierra la vista de detalle y regresa a la lista de resultados conservando página y búsqueda activa."""
+    destino = inicializar_estado_sesion(estado)
+    destino[CLAVE_PRODUCTO_SELECCIONADO] = None
 
 
 def procesar_consulta_busqueda_publica(
@@ -397,9 +485,9 @@ def ejecutar_flujo_busqueda_en_sesion(
 
 
 def _renderizar_tarjeta_producto(producto: ProductoCoincidente) -> None:
-    """Presenta en la lista un producto coincidente con su Código, Nombre y Categoría (Sección 7.4)."""
+    """Presenta en la lista un producto coincidente con su Código, Nombre, Categoría y botón de detalle."""
     with st.container(border=True):
-        col_principal, col_codigo = st.columns([3, 1])
+        col_principal, col_codigo, col_accion = st.columns([3, 1.2, 1.4])
         with col_principal:
             st.markdown(f"**{producto.nombre}**")
             etiqueta_categoria = (
@@ -410,6 +498,124 @@ def _renderizar_tarjeta_producto(producto: ProductoCoincidente) -> None:
             st.caption(f"Categoría: {etiqueta_categoria}")
         with col_codigo:
             st.markdown(f"`Código: {producto.codigo_producto}`")
+        with col_accion:
+            if st.button(
+                TEXTO_BOTON_VER_DETALLE,
+                key=f"btn_ver_detalle_{producto.codigo_producto}",
+                use_container_width=True,
+            ):
+                seleccionar_producto_en_sesion(producto.codigo_producto)
+                st.rerun()
+
+
+def _renderizar_bloque_ubicacion(
+    ubicacion: UbicacionFisicaDetalle,
+    *,
+    etiqueta_encabezado: str | None = None,
+    destacar_principal: bool = False,
+) -> None:
+    """Presenta Rack, Columna, Nivel y Posición de una ubicación física (Secciones 6 y 7 del Prompt 05)."""
+    with st.container(border=True):
+        if etiqueta_encabezado:
+            st.markdown(f"**{etiqueta_encabezado}**")
+
+        cadena_ubicacion = formatear_cadena_ubicacion(ubicacion)
+        if destacar_principal:
+            st.success(f"📍 **{cadena_ubicacion}**")
+        else:
+            st.markdown(f"🔹 **{cadena_ubicacion}**")
+
+        col_rack, col_columna, col_nivel, col_posicion = st.columns(4)
+        with col_rack:
+            st.caption("Rack")
+            st.markdown(f"**{ubicacion.rack}**")
+        with col_columna:
+            st.caption("Columna")
+            st.markdown(f"**{ubicacion.columna}**")
+        with col_nivel:
+            st.caption("Nivel")
+            st.markdown(f"**{ubicacion.nivel}**")
+        with col_posicion:
+            st.caption("Posición")
+            st.markdown(f"**{ubicacion.posicion}**")
+
+
+def _renderizar_vista_detalle_producto(
+    resultado_detalle: ResultadoConsultaDetalle,
+    respuesta_busqueda: RespuestaInterfazBusqueda | None = None,
+) -> None:
+    """Presenta la vista detallada de un producto seleccionado y sus ubicaciones físicas (Secciones 5, 6, 7 y 9)."""
+    col_volver, col_contexto = st.columns([1.5, 3.5])
+    with col_volver:
+        if st.button(
+            TEXTO_BOTON_VOLVER_RESULTADOS,
+            key="btn_volver_resultados",
+            use_container_width=True,
+        ):
+            volver_a_resultados_en_sesion()
+            st.rerun()
+    with col_contexto:
+        if (
+            respuesta_busqueda is not None
+            and respuesta_busqueda.resultado_busqueda is not None
+        ):
+            res_pag = respuesta_busqueda.resultado_busqueda
+            st.caption(
+                f"Búsqueda activa: «{respuesta_busqueda.termino_busqueda.strip()}» · "
+                f"Página {res_pag.pagina_actual} de {res_pag.total_paginas}"
+            )
+
+    if resultado_detalle.estado == EstadoDetalleProducto.PRODUCTO_NO_DISPONIBLE:
+        st.warning(resultado_detalle.mensaje_usuario)
+        return
+
+    if resultado_detalle.estado == EstadoDetalleProducto.ERROR_INTEGRIDAD_UBICACION:
+        st.error(resultado_detalle.mensaje_usuario)
+        if resultado_detalle.detalle_error:
+            st.caption(resultado_detalle.detalle_error)
+        return
+
+    if not resultado_detalle.tiene_detalle or resultado_detalle.detalle is None:
+        st.warning(MENSAJE_PRODUCTO_SELECCIONADO_NO_DISPONIBLE)
+        return
+
+    detalle: DetalleProductoLocalizado = resultado_detalle.detalle
+
+    # 1. Datos generales del producto (Sección 5 — RF-005)
+    with st.container(border=True):
+        st.subheader(f"📋 {TITULO_SECCION_DETALLE_PRODUCTO}")
+        st.markdown(f"### {detalle.nombre}")
+        col_cod, col_cat = st.columns(2)
+        with col_cod:
+            st.markdown(f"**Código del producto:** `{detalle.codigo_producto}`")
+        with col_cat:
+            st.markdown(f"**Categoría:** {detalle.nombre_categoria}")
+        st.markdown(f"**Descripción:** {detalle.descripcion_presentacion}")
+
+    # 2. Ubicación principal destacada (Sección 6 — RF-006)
+    with st.container(border=True):
+        st.subheader(f"📍 {TITULO_SECCION_UBICACION_PRINCIPAL}")
+        _renderizar_bloque_ubicacion(
+            detalle.ubicacion_principal,
+            destacar_principal=True,
+        )
+
+    # 3. Ubicaciones secundarias diferenciadas (Sección 7 — RF-007 / CA-005)
+    with st.container(border=True):
+        st.subheader(f"🗂️ {TITULO_SECCION_UBICACIONES_SECUNDARIAS}")
+        if detalle.tiene_ubicaciones_secundarias:
+            st.caption(
+                f"Se registran {len(detalle.ubicaciones_secundarias)} ubicación(es) "
+                f"secundaria(s) adicional(es) para este producto:"
+            )
+            for indice, ubic_sec in enumerate(detalle.ubicaciones_secundarias, start=1):
+                _renderizar_bloque_ubicacion(
+                    ubic_sec,
+                    etiqueta_encabezado=f"Ubicación secundaria {indice}",
+                    destacar_principal=False,
+                )
+        else:
+            st.caption(MENSAJE_SIN_UBICACIONES_SECUNDARIAS)
 
 
 def _renderizar_controles_paginacion(
@@ -595,20 +801,30 @@ def renderizar_aplicacion(
         respuesta_actual.estado_operativo == EstadoOperativoInterfaz.RESULTADOS_ENCONTRADOS
         and respuesta_actual.resultado_busqueda is not None
     ):
-        resultado = respuesta_actual.resultado_busqueda
-        st.success(
-            f"Mostrando {resultado.indice_inicio_mostrado}–{resultado.indice_fin_mostrado} "
-            f"de {resultado.total_resultados} producto(s) coincidente(s) para "
-            f"«{respuesta_actual.termino_busqueda.strip()}»."
-        )
-        for producto in resultado.resultados_pagina:
-            _renderizar_tarjeta_producto(producto)
+        codigo_seleccionado = st.session_state.get(CLAVE_PRODUCTO_SELECCIONADO)
+        if codigo_seleccionado is not None and (
+            not isinstance(codigo_seleccionado, str) or codigo_seleccionado.strip()
+        ):
+            resultado_detalle = obtener_detalle_producto_en_sesion()
+            _renderizar_vista_detalle_producto(
+                resultado_detalle,
+                respuesta_busqueda=respuesta_actual,
+            )
+        else:
+            resultado = respuesta_actual.resultado_busqueda
+            st.success(
+                f"Mostrando {resultado.indice_inicio_mostrado}–{resultado.indice_fin_mostrado} "
+                f"de {resultado.total_resultados} producto(s) coincidente(s) para "
+                f"«{respuesta_actual.termino_busqueda.strip()}»."
+            )
+            for producto in resultado.resultados_pagina:
+                _renderizar_tarjeta_producto(producto)
 
-        _renderizar_controles_paginacion(
-            resultado=resultado,
-            termino_activo=respuesta_actual.termino_busqueda,
-            descargador_remoto=descargador_remoto,
-        )
+            _renderizar_controles_paginacion(
+                resultado=resultado,
+                termino_activo=respuesta_actual.termino_busqueda,
+                descargador_remoto=descargador_remoto,
+            )
 
     st.divider()
     st.info(f"ℹ️ {AVISO_ACCESO_PUBLICO}")
