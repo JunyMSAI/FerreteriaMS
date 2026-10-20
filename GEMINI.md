@@ -16,7 +16,7 @@ Antes de realizar cualquier tarea, Gemini deberá cargar y seguir las instruccio
 
 Los documentos aprobados para la etapa v0 son:
 
-1. `01_Documentacion/01_Concepto.md` — Concepto general, objetivos, alcance e imágenes conceptuales de FerreteríaMS.
+1. `01_Documentacion/01_Concepto_FerreteriaMS_Final.docx` — Concepto general, objetivos, alcance e imágenes conceptuales de FerreteríaMS.
 2. `01_Documentacion/02_Especificaciones_v0.md` — Requisitos funcionales (RF), criterios de aceptación (CA), estructura del inventario y comportamiento de la aplicación.
 3. `AGENTS.md` — Reglas permanentes de desarrollo, seguridad, trazabilidad, pruebas y control de cambios.
 

@@ -35,7 +35,7 @@ La segunda función no forma parte de FerreteríaMS v0.
 
 Antes de desarrollar cualquier funcionalidad, el agente deberá consultar:
 
-1. `01_Documentacion/01_Concepto.md`: concepto general aprobado del proyecto.
+1. `01_Documentacion/01_Concepto_FerreteriaMS_Final.docx`: concepto general aprobado del proyecto.
 2. `01_Documentacion/02_Especificaciones_v0.md`: requisitos y criterios de aceptación aprobados para v0.
 3. `AGENTS.md`: reglas permanentes del agente.
 4. El prompt correspondiente a la tarea solicitada.
@@ -75,7 +75,7 @@ La estructura documental y de desarrollo será:
 ```text
 FerreteriaMS/
 ├── 01_Documentacion/
-│   ├── 01_Concepto.md
+│   ├── 01_Concepto_FerreteriaMS_Final.docx
 │   ├── 02_Especificaciones_v0.md
 │   └── 03_Especificaciones_Final.md
 ├── 02_Prompts/
