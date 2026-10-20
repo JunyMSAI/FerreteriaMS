@@ -15,3 +15,5 @@ No crees, modifiques ni elimines archivos. No ejecutes instalaciones, commits, p
 Si alguna verificación requiere permisos adicionales, repórtala como NO VERIFICADO sin ampliar los permisos.
 
 Entrega el informe completo de auditoría directamente en esta conversación y espera mi autorización antes de realizar cualquier otra tarea.
+
+**No comiences el Prompt 02.**
