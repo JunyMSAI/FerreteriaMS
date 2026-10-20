@@ -53,6 +53,7 @@ class CodigoErrorInventario(str, Enum):
     ARCHIVO_INEXISTENTE = "ARCHIVO_INEXISTENTE"
     ARCHIVO_CORRUPTO = "ARCHIVO_CORRUPTO"
     HOJA_FALTANTE = "HOJA_FALTANTE"
+    HOJA_NO_AUTORIZADA = "HOJA_NO_AUTORIZADA"
     COLUMNA_FALTANTE = "COLUMNA_FALTANTE"
     COLUMNA_NO_AUTORIZADA = "COLUMNA_NO_AUTORIZADA"
     VALOR_OBLIGATORIO_AUSENTE = "VALOR_OBLIGATORIO_AUSENTE"
@@ -126,9 +127,15 @@ class ErrorEstructuraInventario(ErrorInventario):
 
 
 class ErrorHojaFaltante(ErrorEstructuraInventario):
-    """Falta al menos una de las cuatro hojas obligatorias."""
+    """Falta al menos una de las cuatro hojas obligatorias o existen hojas no autorizadas."""
 
     codigo_por_defecto = CodigoErrorInventario.HOJA_FALTANTE
+
+
+class ErrorHojaNoAutorizada(ErrorHojaFaltante):
+    """Existen hojas adicionales no autorizadas en el archivo Excel."""
+
+    codigo_por_defecto = CodigoErrorInventario.HOJA_NO_AUTORIZADA
 
 
 class ErrorColumnaFaltante(ErrorEstructuraInventario):
@@ -217,6 +224,7 @@ MAPA_EXCEPCIONES: dict[CodigoErrorInventario, type[ErrorInventario]] = {
     CodigoErrorInventario.ARCHIVO_INEXISTENTE: ErrorArchivoInexistente,
     CodigoErrorInventario.ARCHIVO_CORRUPTO: ErrorArchivoCorrupto,
     CodigoErrorInventario.HOJA_FALTANTE: ErrorHojaFaltante,
+    CodigoErrorInventario.HOJA_NO_AUTORIZADA: ErrorHojaNoAutorizada,
     CodigoErrorInventario.COLUMNA_FALTANTE: ErrorColumnaFaltante,
     CodigoErrorInventario.COLUMNA_NO_AUTORIZADA: ErrorColumnaFaltante,
     CodigoErrorInventario.VALOR_OBLIGATORIO_AUSENTE: ErrorValorObligatorio,
@@ -325,7 +333,7 @@ def validar_estructura_hojas(
     hojas: Mapping[str, pd.DataFrame],
     lanzar_excepcion: bool = True,
 ) -> ResultadoValidacion:
-    """Verifica que existan las cuatro hojas aprobadas y sus columnas exactas."""
+    """Verifica que existan exactamente las cuatro hojas aprobadas y sus columnas exactas."""
     errores: list[DetalleErrorInventario] = []
 
     if not isinstance(hojas, Mapping) or len(hojas) == 0:
@@ -338,6 +346,20 @@ def validar_estructura_hojas(
         if lanzar_excepcion:
             _lanzar_excepcion_desde_errores(errores)
         return ResultadoValidacion(es_valido=False, errores=errores)
+
+    hojas_no_autorizadas = [str(nombre) for nombre in hojas.keys() if nombre not in ESQUEMA_HOJAS]
+    if hojas_no_autorizadas:
+        errores.append(
+            DetalleErrorInventario(
+                codigo=CodigoErrorInventario.HOJA_NO_AUTORIZADA,
+                mensaje=(
+                    "El archivo contiene hojas adicionales no autorizadas para v0: "
+                    f"{', '.join(hojas_no_autorizadas)}. "
+                    f"Solo se admiten exactamente las cuatro hojas aprobadas: {', '.join(ORDEN_HOJAS)}."
+                ),
+                hoja=", ".join(hojas_no_autorizadas),
+            )
+        )
 
     for nombre_hoja, columnas_requeridas in ESQUEMA_HOJAS.items():
         if nombre_hoja not in hojas:

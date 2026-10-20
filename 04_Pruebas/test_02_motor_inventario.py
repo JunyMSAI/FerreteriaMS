@@ -426,6 +426,31 @@ class TestMotorInventarioCasosInvalidos(unittest.TestCase):
             ctx_extra.exception.codigo, motor.CodigoErrorInventario.COLUMNA_NO_AUTORIZADA
         )
 
+    def test_archivo_con_hoja_adicional_no_autorizada(self) -> None:
+        """RF-023 / CA-022: Rechaza archivos o diccionarios que contengan hojas adicionales no autorizadas."""
+        # 1. Validación directa de estructura con hoja adicional en memoria
+        hojas_con_extra = _crear_hojas_validas_base()
+        hojas_con_extra["Existencias"] = pd.DataFrame(
+            [{"Codigo_Producto": "0007", "Cantidad": "15"}]
+        )
+        resultado = motor.validar_estructura_hojas(hojas_con_extra, lanzar_excepcion=False)
+        self.assertFalse(resultado.es_valido)
+        self.assertIn(motor.CodigoErrorInventario.HOJA_NO_AUTORIZADA, resultado.codigos_error)
+
+        with self.assertRaises(motor.ErrorHojaNoAutorizada) as ctx_mem:
+            motor.validar_estructura_hojas(hojas_con_extra, lanzar_excepcion=True)
+        self.assertEqual(ctx_mem.exception.codigo, motor.CodigoErrorInventario.HOJA_NO_AUTORIZADA)
+
+        # 2. Lectura de archivo Excel (.xlsx) temporal con una quinta hoja no autorizada
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ruta_extra = Path(tmpdir) / "inventario_hoja_extra.xlsx"
+            _escribir_hojas_en_xlsx(hojas_con_extra, ruta_extra)
+            with self.assertRaises(motor.ErrorHojaNoAutorizada) as ctx_xlsx:
+                motor.cargar_inventario_excel(ruta_extra)
+            self.assertEqual(
+                ctx_xlsx.exception.codigo, motor.CodigoErrorInventario.HOJA_NO_AUTORIZADA
+            )
+
     def test_archivo_inexistente_y_archivo_corrupto(self) -> None:
         """Sección 5.4: Diferencia claramente entre archivo inexistente y archivo corrupto."""
         with tempfile.TemporaryDirectory() as tmpdir:

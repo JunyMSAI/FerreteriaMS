@@ -3,11 +3,11 @@
 **Proyecto:** FerreteríaMS v0  
 **Identificador de la tarea:** `FERMS-V0-P02`  
 **Título de la tarea:** Preparación del entorno (`requirements.txt`, `.gitignore`) y construcción del motor de inventario Excel  
-**Fecha y hora de ejecución:** 2026-10-19 23:22:08 -04:00 a 2026-10-19 23:28:30 -04:00  
+**Fecha y hora de ejecución:** 2026-10-19 23:22:08 -04:00 a 2026-10-19 23:28:30 -04:00 (corrección puntual ejecutada el 2026-10-19 23:43:12 -04:00 a 2026-10-19 23:45:00 -04:00)  
 **Agente de desarrollo:** Gemini (Antigravity)  
 **Repositorio:** `JunyMSAI/FerreteriaMS`  
 **Rama local:** `main`  
-**Referencia de commit base (`HEAD`):** `ad7df25` (`Prompt "02_Motor_Inventario" incluido`)  
+**Referencia de commit base (`HEAD`):** `67579f1` (`Prompt 2 Completado`; ejecución inicial sobre `ad7df25`)  
 **Commit nuevo generado en esta tarea:** Ninguno (por instrucción expresa del usuario y del Prompt 02)
 
 ---
@@ -36,16 +36,34 @@
 >
 > No comiences el Prompt 03. Espera mi revisión y autorización.
 
-### 1.3. Interpretación del agente vs. decisiones técnicas de implementación
+### 1.3. Solicitud original de corrección puntual (`FERMS-V0-P02`)
+> Realiza una corrección puntual de la tarea FERMS-V0-P02.
+>
+> En `03_Aplicacion/inventario.py`, revisa `validar_estructura_hojas()` para garantizar que el archivo Excel contenga exactamente las cuatro hojas aprobadas: Productos, Categorías, Ubicaciones y Asignaciones.
+>
+> Actualmente se verifican las hojas obligatorias, pero también deben rechazarse las hojas adicionales no autorizadas.
+>
+> Añade una prueba automatizada específica en `04_Pruebas/test_02_motor_inventario.py`.
+>
+> Ejecuta nuevamente todas las pruebas y actualiza el informe `05_Resultados/02_Resultado_Motor_Inventario.md` con la corrección y sus resultados.
+>
+> Respeta `GEMINI.md`, `AGENTS.md` y las especificaciones aprobadas.
+>
+> No modifiques `app.py`, los documentos oficiales ni el inventario maestro. No realices commit, push, merge ni despliegues.
+>
+> Entrega el informe y espera autorización.
+
+### 1.4. Interpretación del agente vs. decisiones técnicas de implementación
 - **Contenido procedente de la solicitud y documentación aprobada:**
   - Crear `requirements.txt` (sin `google-genai`) y `.gitignore` (sin excluir globalmente `.xlsx` y protegiendo `.streamlit/secrets.toml` y `.env`).
-  - Implementar el motor del inventario Excel con las cuatro hojas exactas (`Productos`, `Categorías`, `Ubicaciones`, `Asignaciones`), sus columnas obligatorias, preservación de códigos como texto, validaciones de integridad referencial y de negocio, generación de inventario demostrativo en memoria y preparación de la interfaz de inicialización segura.
-  - Crear y ejecutar pruebas locales aisladas en `04_Pruebas/` y documentar los resultados en `05_Resultados/` sin tocar archivos protegidos ni realizar operaciones Git de escritura.
+  - Implementar el motor del inventario Excel con exactamente las cuatro hojas aprobadas (`Productos`, `Categorías`, `Ubicaciones`, `Asignaciones`), rechazando tanto la falta de hojas obligatorias como la presencia de hojas adicionales no autorizadas, y verificando sus columnas obligatorias, preservación de códigos como texto, validaciones de integridad referencial y de negocio, generación de inventario demostrativo en memoria y preparación de la interfaz de inicialización segura.
+  - Crear y ejecutar pruebas locales aisladas en `04_Pruebas/` (incluyendo la prueba específica de rechazo de hojas adicionales no autorizadas) y documentar los resultados en `05_Resultados/` sin tocar archivos protegidos ni realizar operaciones Git de escritura.
 - **Decisiones técnicas tomadas por el agente para la implementación:**
   - Se concentró el motor del inventario en un único módulo cohesivo (`03_Aplicacion/inventario.py`) para evitar complejidad innecesaria o proliferación de módulos auxiliares.
-  - Se diseñó una jerarquía tipada de excepciones (`ErrorInventario` y subclases específicas por tipo de fallo) junto con el enumerado `CodigoErrorInventario` y la estructura `DetalleErrorInventario`, de modo que tanto las pruebas como las futuras capas de interfaz y persistencia puedan capturar errores específicos o inspeccionar informes completos de validación sin ambigüedad.
+  - Se diseñó una jerarquía tipada de excepciones (`ErrorInventario` y subclases específicas por tipo de fallo, incluyendo `ErrorHojaNoAutorizada` como subclase de `ErrorHojaFaltante` / `ErrorEstructuraInventario`) junto con el enumerado `CodigoErrorInventario` (incluyendo `HOJA_NO_AUTORIZADA`) y la estructura `DetalleErrorInventario`, de modo que tanto las pruebas como las futuras capas de interfaz y persistencia puedan capturar errores específicos o inspeccionar informes completos de validación sin ambigüedad.
+  - En `validar_estructura_hojas()`, se incorporó la comprobación explícita de que ninguna clave de `hojas` quede fuera de `ESQUEMA_HOJAS`, registrando `CodigoErrorInventario.HOJA_NO_AUTORIZADA` y lanzando `ErrorHojaNoAutorizada` cuando `lanzar_excepcion=True`.
   - Se utilizó `openpyxl` junto con `pandas` forzando formato de celda de texto (`number_format = "@"` y `data_type = "s"`) en la serialización y `dtype=str, keep_default_na=False` en la lectura, garantizando que códigos como `"0007"`, `"000125"` o `"01"` conserven siempre sus ceros iniciales.
-  - Se utilizó la biblioteca estándar `unittest` y `tempfile.TemporaryDirectory` en `04_Pruebas/test_02_motor_inventario.py` para ejecutar 22 pruebas automatizadas sin añadir dependencias externas de testing en `requirements.txt` ni dejar archivos residuales en el repositorio.
+  - Se utilizó la biblioteca estándar `unittest` y `tempfile.TemporaryDirectory` en `04_Pruebas/test_02_motor_inventario.py` para ejecutar 23 pruebas automatizadas sin añadir dependencias externas de testing en `requirements.txt` ni dejar archivos residuales en el repositorio.
 
 ---
 
@@ -92,7 +110,7 @@
   - `EstadoExistenciaRemota`: enumerado (`EXISTE`, `NO_EXISTE`, `DESCONOCIDO_ERROR`) para controlar la condición de creación remota.
 - **Funciones principales:**
   - `cargar_inventario_excel(origen)`: lee un archivo `.xlsx` desde ruta (`str` / `Path`), `bytes` o flujo binario (`BytesIO`) sin modificar el archivo de entrada, preservando todos los campos como texto y validando la estructura e integridad.
-  - `validar_estructura_hojas(hojas, lanzar_excepcion=True)`: verifica la presencia de las 4 hojas obligatorias, sus columnas exactas y la ausencia de columnas no autorizadas (p. ej. precios o cantidades).
+  - `validar_estructura_hojas(hojas, lanzar_excepcion=True)`: verifica que el libro contenga exactamente las 4 hojas obligatorias aprobadas (rechazando tanto hojas faltantes con `HOJA_FALTANTE` como hojas adicionales no autorizadas con `HOJA_NO_AUTORIZADA` / `ErrorHojaNoAutorizada`), sus columnas exactas y la ausencia de columnas no autorizadas (p. ej. precios o cantidades).
   - `validar_inventario(hojas, lanzar_excepcion=True)`: ejecuta todas las validaciones de campos obligatorios, unicidad, integridad referencial y reglas de ubicación principal y secundarias.
   - `normalizar_valor_principal(valor)`: normaliza representaciones legítimas de `"Sí"` (`"Sí"`, `"Si"`, `"sí"`, `"si"`) y `"No"` (`"No"`, `"no"`), rechazando cualquier valor vacío o ambiguo.
   - `obtener_productos_estructurados(inventario)` y `obtener_producto_por_codigo(inventario, codigo_producto)`: preparan diccionarios listos para las futuras funciones de búsqueda con su categoría, `ubicacion_principal` y `ubicaciones_secundarias`.
@@ -125,9 +143,9 @@
 
 ## 4. Parte C — Pruebas Ejecutadas y Evidencias
 
-- **Archivo de pruebas creado:** `04_Pruebas/test_02_motor_inventario.py`
+- **Archivo de pruebas creado y actualizado:** `04_Pruebas/test_02_motor_inventario.py`
 - **Comando ejecutado:** `python -m unittest discover -s 04_Pruebas -p "test_*.py" -v`
-- **Resumen de ejecución:** 22 pruebas ejecutadas en `0.217s` — **22 OK (0 fallos, 0 errores)**.
+- **Resumen de ejecución:** 23 pruebas ejecutadas en `0.206s` — **23 OK (0 fallos, 0 errores)**.
 
 ### 4.1. Tabla de pruebas y criterios verificados
 
@@ -150,6 +168,7 @@
 | Producto sin ubicación principal (solo secundarias) | RF-019, RF-020 | **APROBADO** | `test_producto_sin_ubicacion_principal` (`ok`) |
 | Valores inválidos o ambiguos del campo `Principal` | RF-020, RF-023 | **APROBADO** | `test_valores_invalidos_del_campo_principal` (`ok`) |
 | Hojas faltantes, columnas faltantes o columnas no autorizadas | RF-023 / CA-022 | **APROBADO** | `test_archivo_con_hoja_o_columna_faltante_o_no_autorizada` (`ok`) |
+| Rechazo de hojas adicionales no autorizadas (en memoria y `.xlsx`) | RF-023 / CA-022 | **APROBADO** | `test_archivo_con_hoja_adicional_no_autorizada` (`ok`) |
 | Diferenciación entre archivo inexistente y archivo corrupto | RF-022, Sección 5.4 | **APROBADO** | `test_archivo_inexistente_y_archivo_corrupto` (`ok`) |
 | Generación demostrativa en memoria y serialización temporal | RF-029, RF-031 / CA-020 parcial (**PENDIENTE DE INTEGRACIÓN** con GitHub) | **APROBADO (local)** / **PENDIENTE DE INTEGRACIÓN (remoto)** | `test_generacion_demostrativa_en_memoria_y_serializacion_ciclica` (`ok`) |
 | Protección del archivo existente y bloqueo ante incertidumbre remota | RF-030 / CA-021 parcial (**PENDIENTE DE INTEGRACIÓN** con GitHub) | **APROBADO (local)** / **PENDIENTE DE INTEGRACIÓN (remoto)** | `test_proteccion_contra_sobrescritura_e_inicializacion_segura` (`ok`) |
@@ -172,18 +191,16 @@ Se confirma expresamente que durante la ejecución de `FERMS-V0-P02`:
 
 ### Estado actual de Git (`git status --short`)
 ```text
-?? .gitignore
-?? 03_Aplicacion/inventario.py
-?? 04_Pruebas/
-?? 05_Resultados/
-?? requirements.txt
+ M 03_Aplicacion/inventario.py
+ M 04_Pruebas/test_02_motor_inventario.py
+ M 05_Resultados/02_Resultado_Motor_Inventario.md
 ```
 
 ---
 
 ## 6. Parte E — Problemas Encontrados, Asuntos Pendientes y Recomendaciones
 
-- **Problemas o errores bloqueantes encontrados:** ninguno.
+- **Problemas o errores bloqueantes encontrados:** ninguno (se aplicó la corrección puntual en `validar_estructura_hojas()` para rechazar hojas adicionales no autorizadas).
 - **Asuntos pendientes para el Prompt 03 y siguientes:**
   1. **Conexión de lectura con GitHub e inicialización controlada (`RF-025`, `RF-029`, `RF-030`, verificación integrada de `CA-020` y `CA-021`):** en el Prompt 03 se deberá conectar la comprobación real de existencia de `03_Aplicacion/inventario.xlsx` en el repositorio de GitHub con `preparar_inicializacion_segura(...)`.
   2. **Prerrequisitos para la integración con GitHub:** disponer de la configuración del repositorio (`owner/repo`, rama y ruta `03_Aplicacion/inventario.xlsx`) y, cuando corresponda realizar operaciones autenticadas o de inicialización/escritura, configurar el token de GitHub con permisos mínimos mediante `.streamlit/secrets.toml` (el cual ya se encuentra protegido en `.gitignore`).
@@ -194,5 +211,5 @@ Se confirma expresamente que durante la ejecución de `FERMS-V0-P02`:
 ## 7. Parte F — Evaluación Final
 
 - **Estado:** **COMPLETADO**
-- **Justificación:** Se implementaron y verificaron localmente todos los elementos autorizados en el Prompt 02 (`requirements.txt`, `.gitignore`, `03_Aplicacion/inventario.py`, `04_Pruebas/test_02_motor_inventario.py` y este informe `05_Resultados/02_Resultado_Motor_Inventario.md`), superando las 22 pruebas automatizadas de casos válidos, casos inválidos y protección de datos sin alterar ningún archivo protegido ni el repositorio remoto.
+- **Justificación:** Se implementaron y verificaron localmente todos los elementos autorizados en el Prompt 02 y su corrección puntual (`requirements.txt`, `.gitignore`, `03_Aplicacion/inventario.py`, `04_Pruebas/test_02_motor_inventario.py` y este informe `05_Resultados/02_Resultado_Motor_Inventario.md`), superando las 23 pruebas automatizadas de casos válidos, casos inválidos (incluyendo el rechazo de hojas adicionales no autorizadas) y protección de datos sin alterar ningún archivo protegido ni el repositorio remoto.
 
