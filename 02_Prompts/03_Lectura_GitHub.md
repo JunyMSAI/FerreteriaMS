@@ -8,7 +8,6 @@
 **Rama:** `main`  
 **Directorio local:** `C:\Projects\FerreteriaMS`  
 **Archivo del prompt:** `02_Prompts/03_Lectura_GitHub.md`  
-**Estado:** Borrador 0.1 — Pendiente de aprobación
 
 ---
 
@@ -404,3 +403,5 @@ No crear `03_Especificaciones_Final.md`.
 - Subir `inventario.xlsx`.
 - Ejecutar métodos de escritura contra GitHub API.
 - Modificar documentos
+
+**No comiences el Prompt 04.**

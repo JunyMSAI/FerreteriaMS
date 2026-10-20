@@ -8,7 +8,6 @@
 **Rama de referencia:** `main`  
 **Directorio local:** `C:\Projects\FerreteriaMS`  
 **Archivo del prompt:** `02_Prompts/04_Busqueda_Publica.md`  
-**Estado:** Pendiente de aprobación y autorización de ejecución
 
 ---
 

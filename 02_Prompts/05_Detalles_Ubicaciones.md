@@ -8,7 +8,6 @@
 **Rama de referencia:** `main`  
 **Directorio local:** `C:\Projects\FerreteriaMS`  
 **Archivo del prompt:** `02_Prompts/05_Detalles_Ubicaciones.md`  
-**Estado:** Pendiente de aprobación
 
 ---
 

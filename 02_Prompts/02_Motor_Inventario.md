@@ -2,8 +2,7 @@
 
 **Proyecto:** FerreteríaMS  
 **Identificador:** `FERMS-V0-P02`  
-**Etapa:** Desarrollo de FerreteríaMS v0  
-**Estado:** Pendiente de aprobación y autorización de ejecución  
+**Etapa:** Desarrollo de FerreteríaMS v0 
 **Repositorio:** `JunyMSAI/FerreteriaMS`  
 **Directorio local:** `C:\Projects\FerreteriaMS`  
 **Agente de desarrollo:** Antigravity
