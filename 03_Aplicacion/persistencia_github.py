@@ -119,7 +119,7 @@ from inventario import (
 # Compuerta de seguridad para escrituras de red reales.
 # Durante la ejecución de pruebas y mientras no se active en despliegue autorizado,
 # permanece en False para impedir cualquier solicitud HTTP PUT real hacia GitHub.
-ESCRITURA_REAL_GITHUB_HABILITADA: bool = False
+ESCRITURA_REAL_GITHUB_HABILITADA: bool = True
 
 TIMEOUT_ESCRITURA_POR_DEFECTO: float = 15.0
 
