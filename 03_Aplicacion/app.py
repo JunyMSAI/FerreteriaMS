@@ -65,6 +65,7 @@ from administracion_productos import (  # noqa: E402
     cargar_inventario_administrativo_en_sesion,
     consultar_producto_administrativo_por_codigo,
     consultar_productos_administrativos,
+    contiene_datos_demostrativos,
     crear_producto_local,
     descartar_cambios_locales_en_sesion,
     editar_producto_local,
@@ -157,6 +158,7 @@ from github_inventario import (  # noqa: E402
     CategoriaResultadoConsulta,
     CodigoErrorGitHub,
     ConfiguracionRepositorioGitHub,
+    EjecutorHTTP,
     ErrorArchivoExcelRemotoCorrupto,
     ErrorArchivoRemotoInexistente,
     ErrorEsquemaInventarioRemoto,
@@ -165,6 +167,40 @@ from github_inventario import (  # noqa: E402
     ocultar_secretos_en_texto,
 )
 from inventario import InventarioDatos  # noqa: E402
+import persistencia_github  # noqa: E402
+from persistencia_github import (  # noqa: E402
+    CLAVE_CONFIRMACION_GUARDADO_GITHUB,
+    CLAVE_CONFLICTO_SHA_ADMIN,
+    CLAVE_HUELLA_ULTIMA_PUBLICACION_ADMIN,
+    CLAVE_ULTIMA_PUBLICACION_GITHUB_ADMIN,
+    MENSAJE_ARCHIVO_REMOTO_YA_EXISTE,
+    MENSAJE_CONFIRMACION_EXPLICITA_REQUERIDA,
+    MENSAJE_CONFIRMACION_RECARGA_CONFLICTO_REQUERIDA,
+    MENSAJE_CONFLICTO_SHA_DETECTADO,
+    MENSAJE_DATOS_DEMOSTRATIVOS_NO_PUBLICABLES,
+    MENSAJE_INICIALIZACION_OFICIAL_NO_AUTORIZADA,
+    MENSAJE_PUBLICACION_ACTUALIZACION_EXITOSA,
+    MENSAJE_PUBLICACION_DUPLICADA_BLOQUEADA,
+    MENSAJE_PUBLICACION_INICIALIZACION_EXITOSA,
+    MENSAJE_RECARGA_REMOTA_TRAS_CONFLICTO_EXITOSA,
+    MENSAJE_SIN_CAMBIOS_PENDIENTES,
+    CodigoErrorPersistenciaGitHub,
+    ConsultorExistenciaRemota,
+    EjecutorHTTPPut,
+    ErrorConflictoVersionShaGitHub,
+    ErrorPersistenciaGitHub,
+    ErrorPublicacionDatosDemostrativosNoAutorizada,
+    EstadoConflictoShaAdmin,
+    EstadoResultadoPublicacionGitHub,
+    ModoPublicacionGitHub,
+    PaqueteExcelVerificado,
+    ResultadoPublicacionGitHub,
+    SolicitudPutContentsGitHub,
+    construir_solicitud_put_contents_github,
+    publicar_cambios_administrativos_github,
+    recargar_inventario_remoto_tras_conflicto,
+    serializar_y_verificar_inventario_xlsx,
+)
 
 # Constantes de identificación y textos públicos aprobados para FerreteríaMS v0
 TITULO: str = "FerreteríaMS"
@@ -230,6 +266,17 @@ TEXTO_BOTON_ADMIN_DESCARTAR_CAMBIOS: str = "↩️ Descartar cambios locales"
 TEXTO_BOTON_ADMIN_CONFIRMAR_CREAR: str = "✅ Validar y registrar en copia local"
 TEXTO_BOTON_ADMIN_CONFIRMAR_EDITAR: str = "💾 Validar y aplicar cambios en copia local"
 TEXTO_BOTON_ADMIN_GUARDAR_BORRADOR_FORM: str = "📝 Guardar borrador de formulario"
+TEXTO_BOTON_ADMIN_PUBLICAR_GITHUB: str = "☁️ Guardar y publicar cambios en GitHub"
+TEXTO_BOTON_ADMIN_INICIALIZAR_GITHUB: str = "☁️ Inicializar inventario maestro en GitHub"
+TEXTO_CHECKBOX_ADMIN_CONFIRMAR_PUBLICACION: str = (
+    "Confirmo explícitamente publicar y versionar estos cambios en GitHub (rama main)"
+)
+TEXTO_BOTON_ADMIN_RECARGAR_TRAS_CONFLICTO: str = (
+    "🔄 Recargar versión remota vigente desde GitHub"
+)
+TEXTO_CHECKBOX_ADMIN_CONFIRMAR_RECARGA_CONFLICTO: str = (
+    "Confirmo recargar la versión remota vigente reemplazando los cambios locales en conflicto"
+)
 MENSAJE_MANTENIMIENTO_PENDIENTE_P09: str = (
     "Las funciones operativas de mantenimiento del inventario (registro, edición de productos "
     "y asignación de ubicaciones físicas) se implementarán en etapas posteriores autorizadas."
@@ -332,6 +379,10 @@ def inicializar_estado_sesion(
         CLAVE_TERMINO_FILTRO_ADMIN: "",
         CLAVE_MENSAJE_OPERACION_ADMIN: None,
         CLAVE_FORMULARIO_BORRADOR_ADMIN: None,
+        CLAVE_CONFIRMACION_GUARDADO_GITHUB: False,
+        CLAVE_CONFLICTO_SHA_ADMIN: None,
+        CLAVE_ULTIMA_PUBLICACION_GITHUB_ADMIN: None,
+        CLAVE_HUELLA_ULTIMA_PUBLICACION_ADMIN: None,
     }
     for clave, valor_defecto in valores_por_defecto.items():
         if clave not in destino:
@@ -877,6 +928,182 @@ def ejecutar_descarte_cambios_locales_en_sesion(
         destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
             "tipo": "error",
             "codigo": "ERROR_DESCARTE",
+            "mensaje": str(exc),
+        }
+        return None
+
+
+def ejecutar_publicacion_github_en_sesion(
+    estado: MutableMapping[str, Any] | None = None,
+    *,
+    confirmacion_explicita: bool = False,
+    modo_publicacion: ModoPublicacionGitHub | None = None,
+    mensaje_commit: str | None = None,
+    token: str | None = None,
+    fuente_secretos: Mapping[str, Any] | None = None,
+    fuente_entorno: Mapping[str, str] | None = None,
+    config_github: ConfiguracionRepositorioGitHub = CONFIGURACION_POR_DEFECTO,
+    ejecutor_http_get: EjecutorHTTP | None = None,
+    ejecutor_http_put: EjecutorHTTPPut | None = None,
+    consultor_existencia: ConsultorExistenciaRemota | None = None,
+    lector_roundtrip: Callable[[bytes], InventarioDatos] | None = None,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+) -> ResultadoPublicacionGitHub:
+    """Orquesta el guardado administrativo y su confirmación en GitHub actualizando los avisos en sesión."""
+    destino = inicializar_estado_sesion(estado)
+    espacio_previo = destino.get(CLAVE_ESPACIO_TRABAJO_ADMIN)
+    modo_inferido = (
+        modo_publicacion
+        if modo_publicacion is not None
+        else (
+            ModoPublicacionGitHub.ACTUALIZACION_ARCHIVO_EXISTENTE
+            if isinstance(espacio_previo, EspacioTrabajoAdminInventario)
+            and (
+                espacio_previo.origen_remoto_confirmado
+                or bool((espacio_previo.sha_base_remoto or "").strip())
+            )
+            else ModoPublicacionGitHub.CREACION_INICIAL_ARCHIVO_NUEVO
+        )
+    )
+    try:
+        resultado = publicar_cambios_administrativos_github(
+            destino,
+            confirmacion_explicita=confirmacion_explicita,
+            modo_publicacion=modo_publicacion,
+            mensaje_commit=mensaje_commit,
+            token=token,
+            fuente_secretos=fuente_secretos,
+            fuente_entorno=fuente_entorno,
+            config=config_github,
+            ejecutor_http_get=ejecutor_http_get,
+            ejecutor_http_put=ejecutor_http_put,
+            consultor_existencia=consultor_existencia,
+            lector_roundtrip=lector_roundtrip,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+        )
+        destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
+            "tipo": "success",
+            "codigo": resultado.estado.value,
+            "mensaje": resultado.mensaje_usuario,
+        }
+        return resultado
+    except ErrorPersistenciaGitHub as exc_pers:
+        tipo_aviso = (
+            "warning"
+            if exc_pers.codigo
+            in (
+                CodigoErrorPersistenciaGitHub.CONFIRMACION_EXPLICITA_REQUERIDA,
+                CodigoErrorPersistenciaGitHub.SIN_CAMBIOS_PENDIENTES,
+                CodigoErrorPersistenciaGitHub.OPERACION_DUPLICADA,
+            )
+            else "error"
+        )
+        destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
+            "tipo": tipo_aviso,
+            "codigo": exc_pers.codigo.value,
+            "mensaje": exc_pers.mensaje,
+        }
+        conflicto_actual = destino.get(CLAVE_CONFLICTO_SHA_ADMIN)
+        return ResultadoPublicacionGitHub(
+            exito=False,
+            confirmado_en_github=False,
+            estado=exc_pers.estado_publicacion,
+            modo_publicacion=modo_inferido,
+            mensaje_usuario=exc_pers.mensaje,
+            detalle_tecnico=exc_pers.detalle_tecnico,
+            codigo_error=exc_pers.codigo,
+            sha_anterior=exc_pers.sha_base_local,
+            conflicto_sha=conflicto_actual
+            if isinstance(conflicto_actual, EstadoConflictoShaAdmin)
+            else None,
+            permite_reintentar=exc_pers.es_reintentable,
+            permite_recargar_remoto=exc_pers.codigo
+            in (
+                CodigoErrorPersistenciaGitHub.CONFLICTO_SHA_REMOTO,
+                CodigoErrorPersistenciaGitHub.ARCHIVO_REMOTO_YA_EXISTE,
+            ),
+            cambios_locales_preservados=True,
+        )
+    except ErrorAdministracionInventario as exc_admin:
+        destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
+            "tipo": "error",
+            "codigo": exc_admin.codigo.value,
+            "mensaje": exc_admin.mensaje,
+        }
+        return ResultadoPublicacionGitHub(
+            exito=False,
+            confirmado_en_github=False,
+            estado=EstadoResultadoPublicacionGitHub.ERROR_SERIALIZACION_O_VALIDACION,
+            modo_publicacion=modo_inferido,
+            mensaje_usuario=exc_admin.mensaje,
+            codigo_error=CodigoErrorPersistenciaGitHub.SERIALIZACION_INVALIDA,
+            cambios_locales_preservados=True,
+        )
+    except ErrorAutorizacionAdmin as exc_auth:
+        if exc_auth.codigo == CodigoResultadoAutenticacion.SESION_EXPIRADA:
+            destino[CLAVE_ESPACIO_TRABAJO_ADMIN] = None
+            destino[CLAVE_RESULTADO_CARGA_ADMIN] = None
+            destino[CLAVE_MODO_VISTA_ADMIN] = ModoVistaAdmin.INICIAL.value
+        destino[CLAVE_MENSAJE_AUTH_ADMIN] = {
+            "tipo": "warning"
+            if exc_auth.codigo == CodigoResultadoAutenticacion.SESION_EXPIRADA
+            else "error",
+            "codigo": exc_auth.codigo.value,
+            "mensaje": exc_auth.mensaje,
+        }
+        return ResultadoPublicacionGitHub(
+            exito=False,
+            confirmado_en_github=False,
+            estado=EstadoResultadoPublicacionGitHub.ERROR_AUTORIZACION_ADMIN,
+            modo_publicacion=modo_inferido,
+            mensaje_usuario=exc_auth.mensaje,
+            codigo_error=CodigoErrorPersistenciaGitHub.AUTORIZACION_ADMIN_INVALIDA,
+            cambios_locales_preservados=True,
+        )
+
+
+def ejecutar_recarga_remota_tras_conflicto_en_sesion(
+    estado: MutableMapping[str, Any] | None = None,
+    *,
+    confirmar_descarte_locales: bool = False,
+    descargador_remoto: DescargadorRemoto | None = None,
+    config_github: ConfiguracionRepositorioGitHub = CONFIGURACION_POR_DEFECTO,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+) -> ResultadoCargaInventarioAdmin | None:
+    """Recarga la versión remota vigente tras un conflicto SHA, exigiendo confirmación explícita."""
+    destino = inicializar_estado_sesion(estado)
+    try:
+        resultado = recargar_inventario_remoto_tras_conflicto(
+            destino,
+            confirmar_descarte_locales=confirmar_descarte_locales,
+            descargador_remoto=descargador_remoto,
+            config=config_github,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+        )
+        destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
+            "tipo": "success",
+            "codigo": "RECARGA_REMOTA_TRAS_CONFLICTO_EXITOSA",
+            "mensaje": MENSAJE_RECARGA_REMOTA_TRAS_CONFLICTO_EXITOSA,
+        }
+        return resultado
+    except ErrorPersistenciaGitHub as exc_pers:
+        destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
+            "tipo": "warning"
+            if exc_pers.codigo
+            == CodigoErrorPersistenciaGitHub.CONFIRMACION_EXPLICITA_REQUERIDA
+            else "error",
+            "codigo": exc_pers.codigo.value,
+            "mensaje": exc_pers.mensaje,
+        }
+        return None
+    except (ErrorAdministracionInventario, ErrorAutorizacionAdmin) as exc:
+        destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
+            "tipo": "error",
+            "codigo": "ERROR_RECARGA_CONFLICTO",
             "mensaje": str(exc),
         }
         return None
@@ -2285,31 +2512,143 @@ def _renderizar_seccion_administrativa_productos(
     if espacio_actual is None:
         return
 
-    # Panel de estado del espacio de trabajo administrativo en memoria (Secciones 6, 9 y 10)
+    # Panel de estado del espacio de trabajo administrativo en memoria y persistencia GitHub (Prompts 09 y 10)
     with st.container(border=True):
         sha_presentacion = escapar_texto_presentacion_segura(
             espacio_actual.sha_base_remoto or "sin-sha-remoto (base local en memoria)"
         )
-        if espacio_actual.tiene_cambios_locales_pendientes:
-            st.warning(
-                f"🟡 **Cambios locales pendientes de guardar (no confirmados en GitHub):** "
-                f"{espacio_actual.total_productos_modificados_localmente} producto(s) modificado(s) "
-                f"en esta sesión · SHA base remoto: `{sha_presentacion}`."
-            )
-            if st.button(
-                TEXTO_BOTON_ADMIN_DESCARTAR_CAMBIOS,
-                key="btn_admin_descartar_cambios_locales",
-            ):
-                ejecutar_descarte_cambios_locales_en_sesion(
-                    st.session_state,
-                    contexto_dispositivo=contexto_dispositivo,
+        conflicto_sha_activo = st.session_state.get(CLAVE_CONFLICTO_SHA_ADMIN)
+        ultima_publicacion = st.session_state.get(CLAVE_ULTIMA_PUBLICACION_GITHUB_ADMIN)
+        es_espacio_demostrativo = bool(
+            espacio_actual.es_copia_demostrativa
+            or contiene_datos_demostrativos(espacio_actual.inventario_trabajo)
+            or contiene_datos_demostrativos(espacio_actual.inventario_original)
+        )
+
+        if es_espacio_demostrativo:
+            st.session_state[CLAVE_CONFIRMACION_GUARDADO_GITHUB] = False
+            if espacio_actual.tiene_cambios_locales_pendientes:
+                st.warning(
+                    f"🟡 **Cambios locales pendientes de guardar (no confirmados en GitHub):** "
+                    f"{espacio_actual.total_productos_modificados_localmente} producto(s) modificado(s) "
+                    f"en esta sesión · SHA base remoto: `{sha_presentacion}`."
                 )
-                st.rerun()
+            st.info(
+                f"🧪 **Copia demostrativa en memoria (`[DEMOSTRATIVO]`):** "
+                f"{MENSAJE_DATOS_DEMOSTRATIVOS_NO_PUBLICABLES}"
+            )
+            if espacio_actual.tiene_cambios_locales_pendientes:
+                if st.button(
+                    TEXTO_BOTON_ADMIN_DESCARTAR_CAMBIOS,
+                    key="btn_admin_descartar_cambios_locales",
+                    use_container_width=True,
+                ):
+                    ejecutar_descarte_cambios_locales_en_sesion(
+                        st.session_state,
+                        contexto_dispositivo=contexto_dispositivo,
+                    )
+                    st.rerun()
+        elif not espacio_actual.origen_remoto_confirmado and not espacio_actual.inicializacion_oficial_autorizada:
+            st.session_state[CLAVE_CONFIRMACION_GUARDADO_GITHUB] = False
+            st.warning(f"🔒 {MENSAJE_INICIALIZACION_OFICIAL_NO_AUTORIZADA}")
+        elif espacio_actual.tiene_cambios_locales_pendientes or not espacio_actual.origen_remoto_confirmado:
+            if espacio_actual.origen_remoto_confirmado:
+                st.warning(
+                    f"🟡 **Cambios locales pendientes de guardar (no confirmados en GitHub):** "
+                    f"{espacio_actual.total_productos_modificados_localmente} producto(s) modificado(s) "
+                    f"en esta sesión · SHA base remoto: `{sha_presentacion}`."
+                )
+            else:
+                st.warning(
+                    "🟡 **Inventario oficial autorizado pendiente de inicialización en GitHub:** "
+                    "el archivo maestro aún no existe en remoto. Puedes revisarlo y confirmar "
+                    "su publicación inicial controlada."
+                )
+
+            confirmacion_marcada = st.checkbox(
+                TEXTO_CHECKBOX_ADMIN_CONFIRMAR_PUBLICACION,
+                value=bool(st.session_state.get(CLAVE_CONFIRMACION_GUARDADO_GITHUB, False)),
+                key="chk_admin_confirmar_publicacion_github",
+            )
+            st.session_state[CLAVE_CONFIRMACION_GUARDADO_GITHUB] = confirmacion_marcada
+
+            etiqueta_boton_publicar = (
+                TEXTO_BOTON_ADMIN_PUBLICAR_GITHUB
+                if espacio_actual.origen_remoto_confirmado
+                else TEXTO_BOTON_ADMIN_INICIALIZAR_GITHUB
+            )
+            col_pub, col_desc_loc = st.columns(2)
+            with col_pub:
+                if st.button(
+                    etiqueta_boton_publicar,
+                    key="btn_admin_publicar_github",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    ejecutar_publicacion_github_en_sesion(
+                        st.session_state,
+                        confirmacion_explicita=bool(confirmacion_marcada),
+                        contexto_dispositivo=contexto_dispositivo,
+                    )
+                    st.rerun()
+            with col_desc_loc:
+                if st.button(
+                    TEXTO_BOTON_ADMIN_DESCARTAR_CAMBIOS,
+                    key="btn_admin_descartar_cambios_locales",
+                    use_container_width=True,
+                ):
+                    ejecutar_descarte_cambios_locales_en_sesion(
+                        st.session_state,
+                        contexto_dispositivo=contexto_dispositivo,
+                    )
+                    st.rerun()
         else:
             st.info(
                 f"🟢 **{MENSAJE_INVENTARIO_DISPONIBLE_EDICION_LOCAL}** "
                 f"(SHA base remoto: `{sha_presentacion}`)."
             )
+            if (
+                isinstance(ultima_publicacion, ResultadoPublicacionGitHub)
+                and ultima_publicacion.confirmado_en_github
+            ):
+                sha_conf = escapar_texto_presentacion_segura(
+                    ultima_publicacion.nuevo_sha_archivo or ""
+                )
+                commit_conf = escapar_texto_presentacion_segura(
+                    ultima_publicacion.sha_commit or ""
+                )
+                st.caption(
+                    f"☁️ Última publicación confirmada en GitHub · SHA archivo: `{sha_conf}` "
+                    f"· Commit: `{commit_conf}`."
+                )
+
+        if isinstance(conflicto_sha_activo, EstadoConflictoShaAdmin):
+            sha_local_seg = escapar_texto_presentacion_segura(
+                conflicto_sha_activo.sha_base_local or "ninguno"
+            )
+            sha_rem_seg = escapar_texto_presentacion_segura(
+                conflicto_sha_activo.sha_remoto_detectado or "desconocido"
+            )
+            st.error(
+                f"⚠️ **Conflicto de versión (SHA) detectado:** "
+                f"{escapar_texto_presentacion_segura(conflicto_sha_activo.mensaje_usuario)} "
+                f"(SHA base local: `{sha_local_seg}` · SHA remoto detectado: `{sha_rem_seg}`)."
+            )
+            confirmar_recarga_conflicto = st.checkbox(
+                TEXTO_CHECKBOX_ADMIN_CONFIRMAR_RECARGA_CONFLICTO,
+                key="chk_admin_confirmar_recarga_conflicto",
+            )
+            if st.button(
+                TEXTO_BOTON_ADMIN_RECARGAR_TRAS_CONFLICTO,
+                key="btn_admin_recargar_remoto_conflicto",
+            ):
+                ejecutar_recarga_remota_tras_conflicto_en_sesion(
+                    st.session_state,
+                    confirmar_descarte_locales=bool(confirmar_recarga_conflicto),
+                    descargador_remoto=descargador_remoto,
+                    contexto_dispositivo=contexto_dispositivo,
+                )
+                st.rerun()
 
     if modo_vista_str == ModoVistaAdmin.CREAR_PRODUCTO.value:
         _renderizar_formulario_crear_producto_admin(contexto_dispositivo)

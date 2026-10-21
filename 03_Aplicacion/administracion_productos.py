@@ -74,6 +74,7 @@ from inventario import (  # noqa: E402
     HOJA_CATEGORIAS,
     HOJA_PRODUCTOS,
     HOJA_UBICACIONES,
+    MARCA_DEMOSTRATIVA,
     ORDEN_HOJAS,
     CodigoErrorInventario,
     DetalleErrorInventario,
@@ -311,6 +312,8 @@ class EspacioTrabajoAdminInventario:
     actualizado_en_epoch: float = 0.0
     confirmado_en_github: bool = False
     es_copia_local_temporal: bool = True
+    es_copia_demostrativa: bool = False
+    inicializacion_oficial_autorizada: bool = False
 
     @property
     def tiene_cambios_locales_pendientes(self) -> bool:
@@ -382,6 +385,8 @@ class PaquetePublicacionPendienteP10:
     codigos_productos_editados: tuple[str, ...]
     total_operaciones_locales: int
     confirmado_en_github: bool = False
+    es_copia_demostrativa: bool = False
+    inicializacion_oficial_autorizada: bool = False
 
 
 DescargadorRemotoAdmin = Callable[..., ResultadoLecturaInventarioRemoto]
@@ -424,6 +429,39 @@ def inventarios_son_identicos(
         if not df_a.equals(df_b):
             return False
     return True
+
+
+def contiene_datos_demostrativos(inventario: InventarioDatos) -> bool:
+    """Determina de forma comprobable si un `InventarioDatos` contiene marcas o registros demostrativos.
+
+    Cumple la separación entre datos de demostración (`crear_inventario_demostrativo()`,
+    marcas `[DEMOSTRATIVO]` o `(Demostrativo)`) y datos autorizados para operación o
+    inicialización oficial del archivo maestro.
+    """
+    if not isinstance(inventario, InventarioDatos):
+        return False
+
+    marca_lower = MARCA_DEMOSTRATIVA.lower()
+    indicadores_demo = (marca_lower, "(demostrativo)")
+
+    hojas = inventario.obtener_hojas()
+    for nombre_hoja in ORDEN_HOJAS:
+        df = hojas.get(nombre_hoja)
+        if df is None or df.empty:
+            continue
+        for col in df.columns:
+            valores_col = df[col].astype(str).str.lower()
+            for ind in indicadores_demo:
+                if valores_col.str.contains(ind, regex=False, na=False).any():
+                    return True
+
+    try:
+        if inventarios_son_identicos(inventario, crear_inventario_demostrativo()):
+            return True
+    except Exception:
+        pass
+
+    return False
 
 
 def _convertir_error_motor_inventario(
@@ -831,6 +869,8 @@ def _construir_resumen_borrador_espacio(
         "tipo_borrador_p09": "espacio_trabajo_productos",
         "sha_base_remoto": espacio.sha_base_remoto or "",
         "origen_remoto_confirmado": bool(espacio.origen_remoto_confirmado),
+        "es_copia_demostrativa": bool(espacio.es_copia_demostrativa),
+        "inicializacion_oficial_autorizada": bool(espacio.inicializacion_oficial_autorizada),
         "codigos_creados": list(espacio.codigos_productos_creados),
         "codigos_editados": list(espacio.codigos_productos_editados),
         "operaciones_locales": operaciones_serializadas,
@@ -891,6 +931,8 @@ def inicializar_espacio_trabajo_desde_inventario(
     *,
     sha_base_remoto: str | None = None,
     origen_remoto_confirmado: bool = True,
+    es_copia_demostrativa: bool | None = None,
+    inicializacion_oficial_autorizada: bool = False,
     contexto_dispositivo: ContextoDispositivo | None = None,
     reloj: ProveedorReloj | None = None,
     ahora_epoch: float | None = None,
@@ -913,6 +955,19 @@ def inicializar_espacio_trabajo_desde_inventario(
         if isinstance(sha_base_remoto, str) and sha_base_remoto.strip()
         else None
     )
+    detectado_demo = contiene_datos_demostrativos(inventario_base)
+    es_demo_efectivo = (
+        bool(es_copia_demostrativa)
+        if es_copia_demostrativa is not None
+        else detectado_demo
+    ) or detectado_demo
+    if inicializacion_oficial_autorizada is True and es_demo_efectivo:
+        raise ErrorValidacionAdministrativa(
+            "No se permite autorizar la inicialización oficial con datos demostrativos ([DEMOSTRATIVO]). "
+            "Los datos de demostración están restringidos exclusivamente a edición local en memoria.",
+            codigo=CodigoErrorAdministrativo.INTEGRIDAD_INVENTARIO_INVALIDA,
+        )
+    init_oficial_efectiva = bool(inicializacion_oficial_autorizada) and not es_demo_efectivo
 
     espacio = EspacioTrabajoAdminInventario(
         inventario_original=copia_original,
@@ -925,6 +980,8 @@ def inicializar_espacio_trabajo_desde_inventario(
         actualizado_en_epoch=sesion.ultima_actividad_epoch,
         confirmado_en_github=False,
         es_copia_local_temporal=True,
+        es_copia_demostrativa=es_demo_efectivo,
+        inicializacion_oficial_autorizada=init_oficial_efectiva,
     )
     estado[CLAVE_ESPACIO_TRABAJO_ADMIN] = espacio
     estado[CLAVE_RESULTADO_CARGA_ADMIN] = ResultadoCargaInventarioAdmin(
@@ -993,6 +1050,8 @@ def cargar_inventario_administrativo_en_sesion(
                 inv_demo,
                 sha_base_remoto=None,
                 origen_remoto_confirmado=False,
+                es_copia_demostrativa=True,
+                inicializacion_oficial_autorizada=False,
                 contexto_dispositivo=contexto_dispositivo,
                 reloj=reloj,
                 ahora_epoch=ahora_epoch,
@@ -1103,9 +1162,13 @@ def descartar_cambios_locales_en_sesion(
         actualizado_en_epoch=sesion.ultima_actividad_epoch,
         confirmado_en_github=False,
         es_copia_local_temporal=True,
+        es_copia_demostrativa=espacio.es_copia_demostrativa,
+        inicializacion_oficial_autorizada=espacio.inicializacion_oficial_autorizada,
     )
     estado[CLAVE_ESPACIO_TRABAJO_ADMIN] = espacio_limpio
     estado[CLAVE_FORMULARIO_BORRADOR_ADMIN] = None
+    estado["ferms_admin_conflicto_sha"] = None
+    estado["ferms_admin_confirmacion_guardado_github"] = False
     descartar_borrador_admin(estado, reloj=reloj, ahora_epoch=ahora_epoch)
     return espacio_limpio
 
@@ -1123,6 +1186,10 @@ def limpiar_espacio_trabajo_admin_en_sesion(
     estado[CLAVE_TERMINO_FILTRO_ADMIN] = ""
     estado[CLAVE_MENSAJE_OPERACION_ADMIN] = None
     estado[CLAVE_FORMULARIO_BORRADOR_ADMIN] = None
+    estado["ferms_admin_conflicto_sha"] = None
+    estado["ferms_admin_confirmacion_guardado_github"] = False
+    estado["ferms_admin_ultima_publicacion_github"] = None
+    estado["ferms_admin_huella_ultima_publicacion"] = None
 
 
 def consultar_productos_administrativos(
@@ -1430,6 +1497,7 @@ def crear_producto_local(
     historial_nuevo = (*espacio.historial_operaciones_locales, operacion)
 
     # Preparar candidato aislado y sincronizar borrador ANTES de mutar el espacio de trabajo activo
+    es_demo_cand = espacio.es_copia_demostrativa or contiene_datos_demostrativos(inventario_validado)
     espacio_candidato = EspacioTrabajoAdminInventario(
         inventario_original=espacio.inventario_original,
         inventario_trabajo=inventario_validado,
@@ -1442,6 +1510,8 @@ def crear_producto_local(
         codigos_productos_creados=codigos_creados_nuevos,
         codigos_productos_editados=espacio.codigos_productos_editados,
         historial_operaciones_locales=historial_nuevo,
+        es_copia_demostrativa=es_demo_cand,
+        inicializacion_oficial_autorizada=espacio.inicializacion_oficial_autorizada and not es_demo_cand,
     )
 
     if _sincronizar_borrador and isinstance(estado, MutableMapping):
@@ -1468,6 +1538,10 @@ def crear_producto_local(
     espacio.codigos_productos_creados = codigos_creados_nuevos
     espacio.historial_operaciones_locales = historial_nuevo
     espacio.actualizado_en_epoch = sesion.ultima_actividad_epoch
+    espacio.es_copia_demostrativa = es_demo_cand
+    espacio.inicializacion_oficial_autorizada = (
+        espacio.inicializacion_oficial_autorizada and not es_demo_cand
+    )
 
     if _publicar_en_estado and isinstance(estado, MutableMapping):
         estado[CLAVE_ESPACIO_TRABAJO_ADMIN] = espacio
@@ -1678,6 +1752,7 @@ def editar_producto_local(
     historial_nuevo = (*espacio.historial_operaciones_locales, operacion)
 
     # Preparar candidato aislado y sincronizar borrador ANTES de mutar el espacio de trabajo activo
+    es_demo_cand = espacio.es_copia_demostrativa or contiene_datos_demostrativos(inventario_validado)
     espacio_candidato = EspacioTrabajoAdminInventario(
         inventario_original=espacio.inventario_original,
         inventario_trabajo=inventario_validado,
@@ -1690,6 +1765,8 @@ def editar_producto_local(
         codigos_productos_creados=espacio.codigos_productos_creados,
         codigos_productos_editados=codigos_editados_nuevos,
         historial_operaciones_locales=historial_nuevo,
+        es_copia_demostrativa=es_demo_cand,
+        inicializacion_oficial_autorizada=espacio.inicializacion_oficial_autorizada and not es_demo_cand,
     )
 
     if _sincronizar_borrador and isinstance(estado, MutableMapping):
@@ -1716,6 +1793,10 @@ def editar_producto_local(
     espacio.codigos_productos_editados = codigos_editados_nuevos
     espacio.historial_operaciones_locales = historial_nuevo
     espacio.actualizado_en_epoch = sesion.ultima_actividad_epoch
+    espacio.es_copia_demostrativa = es_demo_cand
+    espacio.inicializacion_oficial_autorizada = (
+        espacio.inicializacion_oficial_autorizada and not es_demo_cand
+    )
 
     if _publicar_en_estado and isinstance(estado, MutableMapping):
         estado[CLAVE_ESPACIO_TRABAJO_ADMIN] = espacio
@@ -2255,6 +2336,27 @@ def restaurar_borrador_en_espacio_trabajo_admin(
 
         copia_original_prep = clonar_inventario_datos(base_efectiva)
         copia_trabajo_prep = clonar_inventario_datos(base_efectiva)
+        es_demo_prep = (
+            bool(datos.get("es_copia_demostrativa", False))
+            or contiene_datos_demostrativos(base_efectiva)
+            or (
+                espacio_existente.es_copia_demostrativa
+                if isinstance(espacio_existente, EspacioTrabajoAdminInventario)
+                else False
+            )
+            or (not origen_remoto and sha_efectivo is None and base_efectiva.es_demostrativo)
+        )
+        init_oficial_prep = (
+            bool(
+                datos.get(
+                    "inicializacion_oficial_autorizada",
+                    espacio_existente.inicializacion_oficial_autorizada
+                    if isinstance(espacio_existente, EspacioTrabajoAdminInventario)
+                    else False,
+                )
+            )
+            and not es_demo_prep
+        )
         espacio_preparacion = EspacioTrabajoAdminInventario(
             inventario_original=copia_original_prep,
             inventario_trabajo=copia_trabajo_prep,
@@ -2264,6 +2366,8 @@ def restaurar_borrador_en_espacio_trabajo_admin(
             id_sesion_propietaria=sesion.token_sesion,
             creado_en_epoch=sesion.ultima_actividad_epoch,
             actualizado_en_epoch=sesion.ultima_actividad_epoch,
+            es_copia_demostrativa=es_demo_prep,
+            inicializacion_oficial_autorizada=init_oficial_prep,
         )
 
         try:
@@ -2386,6 +2490,7 @@ def preparar_paquete_publicacion_futura_p10(
         registrar_actividad=False,
     )
     copia_validada = clonar_inventario_datos(espacio.inventario_trabajo)
+    es_demo_paq = espacio.es_copia_demostrativa or contiene_datos_demostrativos(copia_validada)
     return PaquetePublicacionPendienteP10(
         inventario_validado=copia_validada,
         sha_base_remoto=espacio.sha_base_remoto,
@@ -2395,4 +2500,6 @@ def preparar_paquete_publicacion_futura_p10(
         codigos_productos_editados=espacio.codigos_productos_editados,
         total_operaciones_locales=len(espacio.historial_operaciones_locales),
         confirmado_en_github=False,
+        es_copia_demostrativa=es_demo_paq,
+        inicializacion_oficial_autorizada=espacio.inicializacion_oficial_autorizada and not es_demo_paq,
     )
