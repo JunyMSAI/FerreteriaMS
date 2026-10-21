@@ -2803,11 +2803,27 @@ def renderizar_aplicacion(
     descargador_remoto: DescargadorRemoto | None = None,
 ) -> None:
     """Construye y renderiza la interfaz pública responsive y la sección administrativa de FerreteríaMS v0."""
+
     st.set_page_config(
-        page_title=TITULO,
-        page_icon=ICONO_PAGINA,
-        layout="wide",
+    page_title=TITULO,
+    page_icon=ICONO_PAGINA,
+    layout="wide",
+    menu_items={
+        "Get Help": None,
+        "Report a Bug": None,
+        "About": None,
+    },
     )
+
+    # Ocultar controles superiores de Streamlit
+    st.markdown("""
+    <style>
+        #MainMenu {visibility: hidden;}
+        [data-testid="stToolbar"] {display: none;}
+        [data-testid="stDecoration"] {display: none;}
+    </style>
+    """, unsafe_allow_html=True)
+
     _aplicar_estilos_locales()
     inicializar_estado_sesion()
 
