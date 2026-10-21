@@ -1614,28 +1614,32 @@ def _aplicar_estilos_locales() -> None:
 
 def _renderizar_banner_encabezado() -> None:
     """Presenta la identidad visual y la barra de navegación superior de FerreteríaMS (Inicio / Productos)."""
-    col_marca, col_nav_inicio, col_nav_productos = st.columns([3.4, 0.8, 0.9])
+    col_marca, col_nav = st.columns([2.35, 1], vertical_alignment="center")
     with col_marca:
         st.title(f"{ICONO_PAGINA} {TITULO}")
         st.caption(DESCRIPCION)
 
     seccion_actual = obtener_seccion_activa()
-    with col_nav_inicio:
-        if st.button(
-            TEXTO_BOTON_NAV_INICIO,
-            key="btn_nav_inicio",
-            use_container_width=True,
-        ):
-            seleccionar_seccion_interfaz(SeccionInterfaz.INICIO)
-            st.rerun()
-    with col_nav_productos:
-        if st.button(
-            TEXTO_BOTON_NAV_PRODUCTOS,
-            key="btn_nav_productos",
-            use_container_width=True,
-        ):
-            seleccionar_seccion_interfaz(SeccionInterfaz.PRODUCTOS)
-            st.rerun()
+    with col_nav:
+        col_nav_inicio, col_nav_productos = st.columns(2, gap="small")
+        with col_nav_inicio:
+            if st.button(
+                TEXTO_BOTON_NAV_INICIO,
+                key="btn_nav_inicio",
+                type="primary" if seccion_actual == SeccionInterfaz.INICIO else "secondary",
+                use_container_width=True,
+            ):
+                seleccionar_seccion_interfaz(SeccionInterfaz.INICIO)
+                st.rerun()
+        with col_nav_productos:
+            if st.button(
+                TEXTO_BOTON_NAV_PRODUCTOS,
+                key="btn_nav_productos",
+                type="primary" if seccion_actual == SeccionInterfaz.PRODUCTOS else "secondary",
+                use_container_width=True,
+            ):
+                seleccionar_seccion_interfaz(SeccionInterfaz.PRODUCTOS)
+                st.rerun()
 
     if seccion_actual == SeccionInterfaz.INICIO:
         st.markdown(

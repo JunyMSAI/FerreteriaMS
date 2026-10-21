@@ -38,6 +38,9 @@ RUTA_APLICACION = RAIZ_PROYECTO / "03_Aplicacion"
 RUTA_APP_PY = RUTA_APLICACION / "app.py"
 RUTA_AUTENTICACION_PY = RUTA_APLICACION / "autenticacion.py"
 RUTA_MAESTRO_DEFINITIVO = RUTA_APLICACION / "inventario.xlsx"
+BYTES_MAESTRO_INICIAL = (
+    RUTA_MAESTRO_DEFINITIVO.read_bytes() if RUTA_MAESTRO_DEFINITIVO.exists() else None
+)
 
 if str(RUTA_APLICACION) not in sys.path:
     sys.path.insert(0, str(RUTA_APLICACION))
@@ -1028,11 +1031,15 @@ class TestSesionesBloqueosYBorradores(unittest.TestCase):
                 self.assertIn("Mostrando 1–1 de 1", at.success[0].value)
 
     def test_38_no_implementacion_de_crud_o_escritura_remota(self) -> None:
-        """Caso 38 (Secciones 1 y 15): No existen formularios CRUD ni llamadas HTTP de escritura ni `inventario.xlsx`."""
-        self.assertFalse(
-            RUTA_MAESTRO_DEFINITIVO.exists(),
-            "No debe existir ni crearse 03_Aplicacion/inventario.xlsx en el Prompt 08.",
+        """Caso 38 (Secciones 1 y 15): No existen llamadas HTTP de escritura en `app.py`/`autenticacion.py` ni se modifica `inventario.xlsx`."""
+        self.assertTrue(RUTA_MAESTRO_DEFINITIVO.is_file())
+        self.assertEqual(
+            RUTA_MAESTRO_DEFINITIVO.read_bytes(),
+            BYTES_MAESTRO_INICIAL,
+            "No debe modificarse 03_Aplicacion/inventario.xlsx en el Prompt 08.",
         )
+        inv_oficial = motor.cargar_inventario_excel(RUTA_MAESTRO_DEFINITIVO)
+        self.assertEqual(tuple(inv_oficial.obtener_hojas().keys()), motor.ORDEN_HOJAS)
         for ruta in (RUTA_APP_PY, RUTA_AUTENTICACION_PY):
             codigo = ruta.read_text(encoding="utf-8")
             for metodo in ('"PUT"', '"POST"', '"DELETE"', '"PATCH"', "'PUT'", "'POST'", "'DELETE'", "'PATCH'"):

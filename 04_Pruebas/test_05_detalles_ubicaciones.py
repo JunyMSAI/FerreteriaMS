@@ -28,6 +28,9 @@ from streamlit.testing.v1 import AppTest
 RAIZ_PROYECTO = Path(__file__).resolve().parent.parent
 RUTA_APLICACION = RAIZ_PROYECTO / "03_Aplicacion"
 RUTA_MAESTRO_DEFINITIVO = RUTA_APLICACION / "inventario.xlsx"
+BYTES_MAESTRO_INICIAL = (
+    RUTA_MAESTRO_DEFINITIVO.read_bytes() if RUTA_MAESTRO_DEFINITIVO.exists() else None
+)
 
 if str(RUTA_APLICACION) not in sys.path:
     sys.path.insert(0, str(RUTA_APLICACION))
@@ -819,11 +822,15 @@ class TestIntegracionDetallesInventarioBusquedaYApp(unittest.TestCase):
             self.assertNotIn("MAR001", textos_totales)
 
     def test_06_ausencia_de_modificaciones_al_archivo_maestro(self) -> None:
-        """Verifica que `03_Aplicacion/inventario.xlsx` no ha sido creado ni modificado."""
-        self.assertFalse(
-            RUTA_MAESTRO_DEFINITIVO.exists(),
-            "No debe crearse `03_Aplicacion/inventario.xlsx` durante el Prompt 05.",
+        """Verifica que `03_Aplicacion/inventario.xlsx` oficial no ha sido modificado."""
+        self.assertTrue(RUTA_MAESTRO_DEFINITIVO.is_file())
+        self.assertEqual(
+            RUTA_MAESTRO_DEFINITIVO.read_bytes(),
+            BYTES_MAESTRO_INICIAL,
+            "No debe modificarse `03_Aplicacion/inventario.xlsx` durante el Prompt 05.",
         )
+        inv_oficial = motor.cargar_inventario_excel(RUTA_MAESTRO_DEFINITIVO)
+        self.assertEqual(tuple(inv_oficial.obtener_hojas().keys()), motor.ORDEN_HOJAS)
 
     def test_07_ausencia_de_operaciones_remotas_de_escritura_y_gemini(self) -> None:
         """Verifica que `app.py` y `busqueda.py` no contienen escrituras HTTP ni llamadas a Gemini API."""

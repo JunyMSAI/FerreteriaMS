@@ -31,9 +31,15 @@ html, body, [data-testid="stAppViewContainer"], .main, .stMain {
 
 .main .block-container,
 .stMainBlockContainer {
-    padding-top: 1.5rem;
+    padding-top: 2.75rem;
     padding-bottom: 2.5rem;
     max-width: 1280px;
+}
+
+/* Asegurar que las columnas de Streamlit permitan encogimiento sin desbordar */
+[data-testid="stHorizontalBlock"] > [data-testid="column"],
+[data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+    min-width: 0;
 }
 
 /* Protección contra desbordamiento de nombres largos, códigos y descripciones (Sección 5.4) */
@@ -53,6 +59,10 @@ html, body, [data-testid="stAppViewContainer"], .main, .stMain {
 /* Accesibilidad WCAG 2.2 AA: tamaño táctil cómodo (>= 44px) e indicadores claros de foco (Sección 8) */
 .stButton > button {
     min-height: 2.75rem;
+    max-width: 100%;
+    white-space: normal;
+    line-height: 1.25;
+    padding: 0.4rem 0.75rem;
     font-weight: 600;
     border-radius: 0.5rem;
     transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
@@ -358,7 +368,7 @@ html, body, [data-testid="stAppViewContainer"], .main, .stMain {
 @media screen and (max-width: 640px) {
     .main .block-container,
     .stMainBlockContainer {
-        padding-top: 1rem !important;
+        padding-top: 2.25rem !important;
         padding-left: 0.85rem !important;
         padding-right: 0.85rem !important;
         max-width: 100% !important;

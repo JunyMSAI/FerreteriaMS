@@ -25,6 +25,9 @@ import pandas as pd
 RAIZ_PROYECTO = Path(__file__).resolve().parent.parent
 RUTA_APLICACION = RAIZ_PROYECTO / "03_Aplicacion"
 RUTA_MAESTRO_DEFINITIVO = RUTA_APLICACION / "inventario.xlsx"
+BYTES_MAESTRO_INICIAL = (
+    RUTA_MAESTRO_DEFINITIVO.read_bytes() if RUTA_MAESTRO_DEFINITIVO.exists() else None
+)
 
 if str(RUTA_APLICACION) not in sys.path:
     sys.path.insert(0, str(RUTA_APLICACION))
@@ -177,7 +180,8 @@ class TestMotorInventarioCasosValidos(unittest.TestCase):
                 list(inv_releido.productos["Codigo_Producto"]),
                 list(inv_demo.productos["Codigo_Producto"]),
             )
-            self.assertFalse(RUTA_MAESTRO_DEFINITIVO.exists())
+            self.assertTrue(RUTA_MAESTRO_DEFINITIVO.is_file())
+            self.assertEqual(RUTA_MAESTRO_DEFINITIVO.read_bytes(), BYTES_MAESTRO_INICIAL)
 
 
 class TestMotorInventarioCasosInvalidos(unittest.TestCase):
@@ -553,11 +557,18 @@ class TestProteccionDatosInventario(unittest.TestCase):
             self.assertFalse(ruta_no_existente.exists())
 
     def test_importar_modulo_no_crea_inventario_maestro(self) -> None:
-        """Sección 6.2 / 7.3: Verifica que 03_Aplicacion/inventario.xlsx no haya sido creado."""
-        self.assertFalse(
-            RUTA_MAESTRO_DEFINITIVO.exists(),
-            "El archivo maestro definitivo 03_Aplicacion/inventario.xlsx no debe crearse en el Prompt 02.",
+        """Sección 6.2 / 7.3: Verifica que 03_Aplicacion/inventario.xlsx oficial no haya sido modificado."""
+        self.assertTrue(
+            RUTA_MAESTRO_DEFINITIVO.is_file(),
+            "El archivo maestro oficial 03_Aplicacion/inventario.xlsx debe existir.",
         )
+        self.assertEqual(
+            RUTA_MAESTRO_DEFINITIVO.read_bytes(),
+            BYTES_MAESTRO_INICIAL,
+            "El archivo maestro oficial 03_Aplicacion/inventario.xlsx no debe modificarse.",
+        )
+        inv_oficial = motor.cargar_inventario_excel(RUTA_MAESTRO_DEFINITIVO)
+        self.assertEqual(tuple(inv_oficial.obtener_hojas().keys()), motor.ORDEN_HOJAS)
 
 
 if __name__ == "__main__":

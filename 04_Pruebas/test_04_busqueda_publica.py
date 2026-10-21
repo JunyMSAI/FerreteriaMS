@@ -30,6 +30,9 @@ from streamlit.testing.v1 import AppTest
 RAIZ_PROYECTO = Path(__file__).resolve().parent.parent
 RUTA_APLICACION = RAIZ_PROYECTO / "03_Aplicacion"
 RUTA_MAESTRO_DEFINITIVO = RUTA_APLICACION / "inventario.xlsx"
+BYTES_MAESTRO_INICIAL = (
+    RUTA_MAESTRO_DEFINITIVO.read_bytes() if RUTA_MAESTRO_DEFINITIVO.exists() else None
+)
 
 if str(RUTA_APLICACION) not in sys.path:
     sys.path.insert(0, str(RUTA_APLICACION))
@@ -591,10 +594,15 @@ class TestIntegracionInventarioGitHubYApp(unittest.TestCase):
             self.assertNotEqual(resp.mensaje_principal, busqueda.MENSAJE_PRODUCTO_NO_ENCONTRADO)
 
     def test_06_ausencia_de_escrituras_remotas_y_locales(self) -> None:
-        """Verifica que la búsqueda pública no crea `03_Aplicacion/inventario.xlsx` ni realiza escrituras HTTP."""
-        self.assertFalse(
-            RUTA_MAESTRO_DEFINITIVO.exists(),
-            "El archivo maestro definitivo no debe existir localmente en esta etapa.",
+        """Verifica que la búsqueda pública no modifica `03_Aplicacion/inventario.xlsx` ni realiza escrituras HTTP."""
+        self.assertTrue(
+            RUTA_MAESTRO_DEFINITIVO.is_file(),
+            "El archivo maestro oficial debe existir.",
+        )
+        self.assertEqual(
+            RUTA_MAESTRO_DEFINITIVO.read_bytes(),
+            BYTES_MAESTRO_INICIAL,
+            "El archivo maestro oficial no debe modificarse durante la búsqueda pública.",
         )
 
         # Verificar que ni busqueda.py ni app.py contienen llamadas HTTP de escritura (PUT, POST, DELETE, PATCH)
@@ -606,7 +614,9 @@ class TestIntegracionInventarioGitHubYApp(unittest.TestCase):
             for metodo_prohibido in ('"PUT"', '"POST"', '"DELETE"', '"PATCH"', "'PUT'", "'POST'", "'DELETE'", "'PATCH'"):
                 self.assertNotIn(metodo_prohibido, codigo)
 
-        self.assertFalse(RUTA_MAESTRO_DEFINITIVO.exists())
+        inv_oficial = motor.cargar_inventario_excel(RUTA_MAESTRO_DEFINITIVO)
+        self.assertEqual(tuple(inv_oficial.obtener_hojas().keys()), motor.ORDEN_HOJAS)
+        self.assertEqual(RUTA_MAESTRO_DEFINITIVO.read_bytes(), BYTES_MAESTRO_INICIAL)
 
     def test_07_ausencia_de_dependencias_operativas_de_gemini_api(self) -> None:
         """Verifica CA-032 y CA-033: `app.py` y `busqueda.py` no importan ni invocan `google-genai` ni exigen API key."""

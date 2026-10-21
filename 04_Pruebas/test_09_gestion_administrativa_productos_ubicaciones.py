@@ -25,6 +25,9 @@ RUTA_APP = RUTA_APLICACION / "app.py"
 RUTA_ADMIN_PRODUCTOS = RUTA_APLICACION / "administracion_productos.py"
 RUTA_AUTENTICACION = RUTA_APLICACION / "autenticacion.py"
 RUTA_INVENTARIO_XLSX = RUTA_APLICACION / "inventario.xlsx"
+BYTES_INVENTARIO_XLSX_INICIAL = (
+    RUTA_INVENTARIO_XLSX.read_bytes() if RUTA_INVENTARIO_XLSX.exists() else None
+)
 
 if str(RUTA_APLICACION) not in sys.path:
     sys.path.insert(0, str(RUTA_APLICACION))
@@ -1109,12 +1112,17 @@ class PruebasPrompt09GestionAdministrativaProductosUbicaciones(unittest.TestCase
         self.assertEqual(paquete.sha_base_remoto, SHA_REMOTO_SIMULADO)
 
     # ------------------------------------------------------------------
-    # 38. Verificación de que no se crea ni modifica 03_Aplicacion/inventario.xlsx
+    # 38. Verificación de que no se modifica 03_Aplicacion/inventario.xlsx oficial
     # ------------------------------------------------------------------
     def test_38_no_se_crea_ni_modifica_archivo_local_inventario_xlsx(self) -> None:
-        self.assertFalse(
-            RUTA_INVENTARIO_XLSX.exists(),
-            "El archivo 03_Aplicacion/inventario.xlsx no debe existir ni crearse en el Prompt 09.",
+        self.assertTrue(
+            RUTA_INVENTARIO_XLSX.is_file(),
+            "El archivo oficial 03_Aplicacion/inventario.xlsx debe existir.",
+        )
+        self.assertEqual(
+            RUTA_INVENTARIO_XLSX.read_bytes(),
+            BYTES_INVENTARIO_XLSX_INICIAL,
+            "El archivo 03_Aplicacion/inventario.xlsx no debe modificarse en el Prompt 09.",
         )
         estado: dict[str, Any] = {}
         app_ferms.inicializar_estado_sesion(estado)
@@ -1141,7 +1149,7 @@ class PruebasPrompt09GestionAdministrativaProductosUbicaciones(unittest.TestCase
             EstadoInventarioAdmin.INVENTARIO_REMOTO_INEXISTENTE,
         )
         self.assertTrue(res_inexistente.permite_inicializar_demo_local)
-        self.assertFalse(RUTA_INVENTARIO_XLSX.exists())
+        self.assertEqual(RUTA_INVENTARIO_XLSX.read_bytes(), BYTES_INVENTARIO_XLSX_INICIAL)
 
         res_demo_memoria = cargar_inventario_administrativo_en_sesion(
             estado,
@@ -1154,7 +1162,82 @@ class PruebasPrompt09GestionAdministrativaProductosUbicaciones(unittest.TestCase
             EstadoInventarioAdmin.INVENTARIO_DISPONIBLE_EDICION_LOCAL,
         )
         self.assertIsNotNone(res_demo_memoria.espacio_trabajo)
-        self.assertFalse(RUTA_INVENTARIO_XLSX.exists())
+        self.assertEqual(RUTA_INVENTARIO_XLSX.read_bytes(), BYTES_INVENTARIO_XLSX_INICIAL)
+        inv_oficial = motor_inventario.cargar_inventario_excel(RUTA_INVENTARIO_XLSX)
+        self.assertEqual(tuple(inv_oficial.obtener_hojas().keys()), motor_inventario.ORDEN_HOJAS)
+        self.assertEqual(len(inv_oficial.productos), 0)
+        self.assertEqual(len(inv_oficial.categorias), 3)
+        self.assertEqual(len(inv_oficial.ubicaciones), 3)
+        self.assertEqual(len(inv_oficial.asignaciones), 0)
+
+        lectura_oficial = ResultadoLecturaInventarioRemoto(
+            propietario="JunyMSAI",
+            repositorio="FerreteriaMS",
+            rama="main",
+            ruta_archivo="03_Aplicacion/inventario.xlsx",
+            sha_github=SHA_REMOTO_SIMULADO,
+            sha256_local="0" * 64,
+            tamano_bytes=len(BYTES_INVENTARIO_XLSX_INICIAL or b""),
+            inventario=inv_oficial,
+            categoria_consulta=CategoriaResultadoConsulta.INVENTARIO_DISPONIBLE,
+        )
+        cargar_inventario_administrativo_en_sesion(
+            estado,
+            descargador_remoto=lambda **_: lectura_oficial,
+            inicializar_demo_si_no_existe=False,
+            reloj=self.reloj,
+        )
+        cats_oficiales = admin_prod.obtener_catalogo_categorias_admin(
+            estado, reloj=self.reloj
+        )
+        ubics_oficiales = admin_prod.obtener_catalogo_ubicaciones_admin(
+            estado, reloj=self.reloj
+        )
+        self.assertEqual(
+            [c["categoria_id"] for c in cats_oficiales],
+            ["CAT001", "CAT002", "CAT003"],
+        )
+        self.assertEqual(
+            [u["ubicacion_id"] for u in ubics_oficiales],
+            ["U001", "U002", "U003"],
+        )
+        with patch.dict(
+            os.environ, self.secretos_validos, clear=False
+        ), patch.object(
+            github_inventario,
+            "descargar_inventario_remoto",
+            return_value=lectura_oficial,
+        ):
+            at_oficial = AppTest.from_file(str(RUTA_APP), default_timeout=15)
+            at_oficial.run()
+            self.assertFalse(at_oficial.exception)
+            at_oficial.button(key="btn_nav_productos").click()
+            at_oficial.run()
+            at_oficial.text_input(key="campo_admin_usuario").set_value(self.USUARIO_PRUEBA)
+            at_oficial.text_input(key="campo_admin_contrasena").set_value(
+                self.CONTRASENA_PRUEBA
+            )
+            at_oficial.button(key="btn_admin_iniciar_sesion").click()
+            at_oficial.run()
+            at_oficial.button(key="btn_admin_abrir_crear").click()
+            at_oficial.run()
+            self.assertFalse(at_oficial.exception)
+            opciones_cat_ui = list(
+                at_oficial.selectbox(key="campo_admin_crear_categoria").options
+            )
+            opciones_ubic_ui = list(
+                at_oficial.multiselect(key="campo_admin_crear_ubicaciones").options
+            )
+            opciones_prin_ui = list(
+                at_oficial.selectbox(key="campo_admin_crear_ubicacion_principal").options
+            )
+            self.assertEqual(len(opciones_cat_ui), 3)
+            self.assertTrue(all(cid in " ".join(opciones_cat_ui) for cid in ("CAT001", "CAT002", "CAT003")))
+            self.assertEqual(len(opciones_ubic_ui), 3)
+            self.assertTrue(all(uid in " ".join(opciones_ubic_ui) for uid in ("U001", "U002", "U003")))
+            self.assertEqual(len(opciones_prin_ui), 3)
+            self.assertTrue(all(uid in " ".join(opciones_prin_ui) for uid in ("U001", "U002", "U003")))
+        self.assertEqual(RUTA_INVENTARIO_XLSX.read_bytes(), BYTES_INVENTARIO_XLSX_INICIAL)
 
     # ------------------------------------------------------------------
     # 39. Ausencia de exposición de secretos, tokens o hashes

@@ -30,6 +30,9 @@ import pandas as pd
 RAIZ_PROYECTO = Path(__file__).resolve().parent.parent
 RUTA_APLICACION = RAIZ_PROYECTO / "03_Aplicacion"
 RUTA_MAESTRO_DEFINITIVO = RUTA_APLICACION / "inventario.xlsx"
+BYTES_MAESTRO_INICIAL = (
+    RUTA_MAESTRO_DEFINITIVO.read_bytes() if RUTA_MAESTRO_DEFINITIVO.exists() else None
+)
 
 if str(RUTA_APLICACION) not in sys.path:
     sys.path.insert(0, str(RUTA_APLICACION))
@@ -422,8 +425,9 @@ class TestDescargaYValidacionInventarioRemoto(unittest.TestCase):
         assert prod_cinta is not None
         self.assertEqual(prod_cinta["ubicacion_principal"]["ubicacion_id"], "U003")
 
-        # Confirmar ausencia de escrituras en disco (Sección 5.3 y 9.2)
-        self.assertFalse(RUTA_MAESTRO_DEFINITIVO.exists())
+        # Confirmar no modificación del archivo maestro oficial en disco (Sección 5.3 y 9.2)
+        self.assertTrue(RUTA_MAESTRO_DEFINITIVO.is_file())
+        self.assertEqual(RUTA_MAESTRO_DEFINITIVO.read_bytes(), BYTES_MAESTRO_INICIAL)
 
     def test_deteccion_contenido_binario_invalido(self) -> None:
         """Sección 7 (escenario 11) y 9.2: Rechaza base64 corrupto, tamaño 0 o descarga incompleta."""
@@ -622,7 +626,8 @@ class TestIntegracionInicializacionSegura(unittest.TestCase):
 
         inv_preparado = motor.cargar_inventario_excel(bytes_iniciales)
         self.assertEqual(set(inv_preparado.obtener_hojas().keys()), set(motor.ORDEN_HOJAS))
-        self.assertFalse(RUTA_MAESTRO_DEFINITIVO.exists())
+        self.assertTrue(RUTA_MAESTRO_DEFINITIVO.is_file())
+        self.assertEqual(RUTA_MAESTRO_DEFINITIVO.read_bytes(), BYTES_MAESTRO_INICIAL)
 
 
 class TestSeguridadTransporteYDownloadUrl(unittest.TestCase):

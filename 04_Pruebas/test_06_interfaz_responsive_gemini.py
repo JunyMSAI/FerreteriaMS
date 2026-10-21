@@ -30,6 +30,9 @@ RUTA_APLICACION = RAIZ_PROYECTO / "03_Aplicacion"
 RUTA_APP_PY = RUTA_APLICACION / "app.py"
 RUTA_ESTILOS_CSS = RUTA_APLICACION / "estilos.css"
 RUTA_MAESTRO_DEFINITIVO = RUTA_APLICACION / "inventario.xlsx"
+BYTES_MAESTRO_INICIAL = (
+    RUTA_MAESTRO_DEFINITIVO.read_bytes() if RUTA_MAESTRO_DEFINITIVO.exists() else None
+)
 
 if str(RUTA_APLICACION) not in sys.path:
     sys.path.insert(0, str(RUTA_APLICACION))
@@ -498,11 +501,15 @@ class TestInterfazResponsiveYGeminiFuncional(unittest.TestCase):
             self.assertNotIn("sw.js", nombre_low)
 
     def test_17_ausencia_de_operaciones_remotas_de_escritura_y_archivo_maestro(self) -> None:
-        """Caso 17 (Sección 10.2 y 12): No existe `inventario.xlsx` local ni métodos HTTP de escritura."""
-        self.assertFalse(
-            RUTA_MAESTRO_DEFINITIVO.exists(),
-            "No debe crearse ni modificarse 03_Aplicacion/inventario.xlsx.",
+        """Caso 17 (Sección 10.2 y 12): No se modifica `inventario.xlsx` oficial ni existen métodos HTTP de escritura en UI."""
+        self.assertTrue(RUTA_MAESTRO_DEFINITIVO.is_file())
+        self.assertEqual(
+            RUTA_MAESTRO_DEFINITIVO.read_bytes(),
+            BYTES_MAESTRO_INICIAL,
+            "No debe modificarse 03_Aplicacion/inventario.xlsx.",
         )
+        inv_oficial = motor.cargar_inventario_excel(RUTA_MAESTRO_DEFINITIVO)
+        self.assertEqual(tuple(inv_oficial.obtener_hojas().keys()), motor.ORDEN_HOJAS)
 
         for nombre_archivo in ("app.py", "busqueda.py"):
             codigo = (RUTA_APLICACION / nombre_archivo).read_text(encoding="utf-8")

@@ -48,6 +48,9 @@ RUTA_ADMIN_PRODUCTOS = RUTA_APLICACION / "administracion_productos.py"
 RUTA_AUTENTICACION = RUTA_APLICACION / "autenticacion.py"
 RUTA_PERSISTENCIA = RUTA_APLICACION / "persistencia_github.py"
 RUTA_INVENTARIO_XLSX = RUTA_APLICACION / "inventario.xlsx"
+BYTES_INVENTARIO_XLSX_INICIAL = (
+    RUTA_INVENTARIO_XLSX.read_bytes() if RUTA_INVENTARIO_XLSX.exists() else None
+)
 
 if str(RUTA_APLICACION) not in sys.path:
     sys.path.insert(0, str(RUTA_APLICACION))
@@ -537,7 +540,8 @@ class TestPrompt10PersistenciaInventarioGitHub(unittest.TestCase):
         )
         # Firma PK\x03\x04 de archivo .xlsx (contenedor ZIP OpenXML)
         self.assertTrue(paquete.bytes_xlsx.startswith(b"PK\x03\x04"))
-        self.assertFalse(RUTA_INVENTARIO_XLSX.exists())
+        self.assertTrue(RUTA_INVENTARIO_XLSX.is_file())
+        self.assertEqual(RUTA_INVENTARIO_XLSX.read_bytes(), BYTES_INVENTARIO_XLSX_INICIAL)
 
     # ------------------------------------------------------------------
     # 2. Preservación exacta de las cuatro hojas (Productos, Categorías, Ubicaciones, Asignaciones)
@@ -1880,14 +1884,19 @@ class TestPrompt10PersistenciaInventarioGitHub(unittest.TestCase):
         )
 
     # ------------------------------------------------------------------
-    # 38. Verificación de que no se crea inventario.xlsx local ni se ejecutan solicitudes reales
+    # 38. Verificación de que no se modifica inventario.xlsx local ni se ejecutan solicitudes reales
     # ------------------------------------------------------------------
     def test_38_no_se_crea_ni_modifica_inventario_xlsx_local_ni_solicitudes_reales(
         self,
     ) -> None:
-        self.assertFalse(
-            RUTA_INVENTARIO_XLSX.exists(),
-            "El archivo 03_Aplicacion/inventario.xlsx no debe existir ni crearse localmente.",
+        self.assertTrue(
+            RUTA_INVENTARIO_XLSX.is_file(),
+            "El archivo oficial 03_Aplicacion/inventario.xlsx debe existir.",
+        )
+        self.assertEqual(
+            RUTA_INVENTARIO_XLSX.read_bytes(),
+            BYTES_INVENTARIO_XLSX_INICIAL,
+            "El archivo 03_Aplicacion/inventario.xlsx no debe modificarse localmente.",
         )
         self.assertFalse(
             ESCRITURA_REAL_GITHUB_HABILITADA,
@@ -1906,7 +1915,9 @@ class TestPrompt10PersistenciaInventarioGitHub(unittest.TestCase):
                 solicitud.encabezados,
                 solicitud.cuerpo_json_bytes,
             )
-        self.assertFalse(RUTA_INVENTARIO_XLSX.exists())
+        self.assertEqual(RUTA_INVENTARIO_XLSX.read_bytes(), BYTES_INVENTARIO_XLSX_INICIAL)
+        inv_oficial = cargar_inventario_excel(RUTA_INVENTARIO_XLSX)
+        self.assertEqual(tuple(inv_oficial.obtener_hojas().keys()), ORDEN_HOJAS)
 
     # ------------------------------------------------------------------
     # 39. Ausencia de exposición de secretos, tokens, contraseñas o hashes
@@ -2336,7 +2347,8 @@ class TestPrompt10PersistenciaInventarioGitHub(unittest.TestCase):
         archivos_versionados = [
             linea.strip() for linea in proc.stdout.splitlines() if linea.strip()
         ]
-        self.assertNotIn("03_Aplicacion/inventario.xlsx", archivos_versionados)
+        self.assertIn("03_Aplicacion/inventario.xlsx", archivos_versionados)
+        self.assertEqual(RUTA_INVENTARIO_XLSX.read_bytes(), BYTES_INVENTARIO_XLSX_INICIAL)
         self.assertFalse(
             any(a.endswith("secrets.toml") for a in archivos_versionados),
             "Ningún archivo secrets.toml debe estar versionado en git.",
