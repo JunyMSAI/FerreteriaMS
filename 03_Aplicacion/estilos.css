@@ -237,6 +237,80 @@ html, body, [data-testid="stAppViewContainer"], .main, .stMain {
 }
 
 /* ==========================================================================
+   Sección administrativa y Login/Logout — Prompt 07 (RF-011, RF-012, RF-013)
+   ========================================================================== */
+
+.ferms-admin-login-panel {
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    border: 1px solid #cbd5e1;
+    border-radius: 0.85rem;
+    padding: 1.5rem 1.35rem;
+    text-align: center;
+    margin-bottom: 1rem;
+    width: 100%;
+    max-width: 100%;
+}
+
+.ferms-admin-candado-icono {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3.4rem;
+    height: 3.4rem;
+    border-radius: 999px;
+    background-color: #dbeafe;
+    color: var(--ferms-color-primario);
+    font-size: 1.6rem;
+    margin-bottom: 0.65rem;
+}
+
+.ferms-admin-login-titulo {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--ferms-color-texto);
+    margin: 0 0 0.35rem 0;
+}
+
+.ferms-admin-login-subtitulo {
+    font-size: 0.92rem;
+    color: var(--ferms-color-texto-secundario);
+    margin: 0;
+    line-height: 1.45;
+}
+
+.ferms-admin-panel-autorizado {
+    background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+    border: 1px solid #93c5fd;
+    border-radius: 0.85rem;
+    padding: 1.25rem 1.35rem;
+    margin-bottom: 1rem;
+    width: 100%;
+    max-width: 100%;
+}
+
+.ferms-admin-etiqueta-gestion {
+    display: inline-block;
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ferms-color-primario-oscuro);
+    margin-bottom: 0.25rem;
+}
+
+.ferms-aviso-solo-escritorio {
+    display: none;
+    background-color: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 0.65rem;
+    padding: 0.85rem 1rem;
+    color: #92400e;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    margin-bottom: 1rem;
+}
+
+/* ==========================================================================
    Adaptación Responsive (Sección 7: Escritorio, Tabletas y Teléfonos)
    ========================================================================== */
 
@@ -268,6 +342,15 @@ html, body, [data-testid="stAppViewContainer"], .main, .stMain {
         flex: 1 1 100% !important;
         min-width: 0 !important;
         max-width: 100% !important;
+    }
+
+    /* Indicación visual en pantallas móviles sobre la restricción administrativa de escritorio (RF-013) */
+    .ferms-aviso-solo-escritorio {
+        display: block !important;
+    }
+
+    .ferms-admin-escritorio-only {
+        display: none !important;
     }
 }
 

@@ -1,30 +1,24 @@
-"""Interfaz pública responsive de búsqueda, detalles, localización física y área visual Gemini («Próximamente») de FerreteríaMS v0.
+"""Interfaz pública responsive, sección visual Gemini («Próximamente») y autenticación administrativa de FerreteríaMS v0.
 
 Proyecto: FerreteríaMS v0
-Tareas: FERMS-V0-P04, FERMS-V0-P05, FERMS-V0-P06
+Tareas: FERMS-V0-P04, FERMS-V0-P05, FERMS-V0-P06, FERMS-V0-P07
 Requisitos relacionados: RF-001, RF-002, RF-003, RF-004, RF-005, RF-006, RF-007, RF-008,
-RF-009, RF-010, RF-024, RF-025, RF-028, RF-032, RF-033, RF-034, RF-035, RF-036, RF-037, RF-038.
+RF-009, RF-010, RF-011, RF-012, RF-013 (parcial), RF-024, RF-025, RF-028, RF-032, RF-033,
+RF-034, RF-035, RF-036, RF-037, RF-038.
 Criterios relacionados: CA-001, CA-002, CA-003, CA-004, CA-005, CA-006, CA-007, CA-008,
-CA-031, CA-032, CA-033, CA-034, CA-039, CA-040, CA-041, CA-042, CA-043, CA-060, CA-061.
-
-Adaptación de la plantilla académica a FerreteríaMS v0:
-- Conserva la estructura de inicialización de Streamlit (`st.set_page_config`, `st.title`,
-  `st.caption`), el uso estructurado de `st.session_state` y el manejo explícito de errores.
-- Retira por completo las importaciones y llamadas al cliente de inteligencia artificial,
-  la exigencia de clave de API para el asistente y la interfaz de chat operativa.
-- Incorpora la presentación visual responsive (escritorio, tableta y teléfono) y el área
-  visual reservada de «Asistente Gemini — Próximamente» sin capacidades operativas de IA en v0.
-- Reutiliza `03_Aplicacion/inventario.py`, `03_Aplicacion/github_inventario.py` y
-  `03_Aplicacion/busqueda.py` sin duplicar sus responsabilidades ni realizar escrituras remotas.
+CA-009, CA-010, CA-011, CA-019 (parcial), CA-027 (parcial), CA-028, CA-029, CA-030 (parcial),
+CA-031, CA-032, CA-033, CA-034, CA-039, CA-040, CA-041, CA-042, CA-043, CA-058 (parcial),
+CA-059, CA-060, CA-061.
 """
 
 from __future__ import annotations
 
+import html
 import sys
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, MutableMapping
+from typing import Any, Callable, Mapping, MutableMapping
 
 import streamlit as st
 
@@ -32,7 +26,36 @@ _DIRECTORIO_ACTUAL = Path(__file__).resolve().parent
 if str(_DIRECTORIO_ACTUAL) not in sys.path:
     sys.path.insert(0, str(_DIRECTORIO_ACTUAL))
 
+import autenticacion  # noqa: E402
 import github_inventario  # noqa: E402
+from autenticacion import (  # noqa: E402
+    CLAVE_CONTEXTO_DISPOSITIVO,
+    CLAVE_MENSAJE_AUTH_ADMIN,
+    CLAVE_SESION_ADMIN,
+    MENSAJE_ACCESO_NO_AUTORIZADO,
+    MENSAJE_ADMIN_CONFIGURACION_INVALIDA,
+    MENSAJE_ADMIN_NO_CONFIGURADO,
+    MENSAJE_AUTENTICACION_EXITOSA,
+    MENSAJE_CREDENCIALES_INCOMPLETAS,
+    MENSAJE_CREDENCIALES_INVALIDAS,
+    MENSAJE_RESTRICCION_MOVIL_ADMIN,
+    MENSAJE_SESION_CERRADA,
+    CodigoResultadoAutenticacion,
+    ContextoDispositivo,
+    ErrorAutorizacionAdmin,
+    EstadoConfiguracionAdmin,
+    EstadoSesionAdmin,
+    ResultadoAutenticacion,
+    cerrar_sesion_admin,
+    detectar_contexto_dispositivo,
+    esta_autenticado_en_sesion,
+    iniciar_sesion_admin,
+    obtener_configuracion_admin,
+    obtener_usuario_autenticado,
+     ocultar_secretos_autenticacion,
+    requerir_autorizacion_admin,
+    verificar_configuracion_admin,
+)
 from busqueda import (  # noqa: E402
     MENSAJE_BUSCANDO_PRODUCTOS,
     MENSAJE_BUSQUEDA_VACIA,
@@ -114,6 +137,28 @@ NOTA_ESTADO_GEMINI_V0: str = (
     "el asistente conversacional ni se realizan consultas a modelos de inteligencia artificial."
 )
 
+# Constantes de navegación y sección administrativa (Sección 8 del Prompt 07)
+TEXTO_BOTON_NAV_INICIO: str = "🏠 Inicio"
+TEXTO_BOTON_NAV_PRODUCTOS: str = "📦 Productos"
+TITULO_SECCION_ADMIN_LOGIN: str = "Acceso de administración"
+SUBTITULO_SECCION_ADMIN_LOGIN: str = (
+    "Ingresa con tu usuario y contraseña para acceder al panel administrativo de Productos."
+)
+TITULO_SECCION_PRODUCTOS_ADMIN: str = "Productos — Panel administrativo"
+TEXTO_BOTON_LOGIN_ADMIN: str = "🔐 Iniciar sesión"
+TEXTO_BOTON_LOGOUT_ADMIN: str = "🚪 Cerrar sesión (Logout)"
+TEXTO_BOTON_VOLVER_SITIO: str = "🏠 Volver al buscador público"
+MENSAJE_MANTENIMIENTO_PENDIENTE_P09: str = (
+    "Las funciones operativas de mantenimiento del inventario (registro, edición de productos "
+    "y asignación de ubicaciones físicas) se implementarán en etapas posteriores autorizadas."
+)
+NOTA_CONTROLES_SESION_PENDIENTES_P08: str = (
+    "Nota de seguridad de la etapa actual (Prompt 07): la autenticación básica y verificación "
+    "por hash Argon2id están activas. Los controles avanzados de expiración por inactividad "
+    "(15 minutos), advertencia previa y bloqueos progresivos por intentos fallidos se "
+    "integrarán en el Prompt 08."
+)
+
 # Mensajes diferenciados para los estados del inventario remoto (Sección 8.2 del Prompt 04)
 MENSAJE_INVENTARIO_NO_INICIALIZADO: str = (
     "El inventario maestro todavía no ha sido inicializado en el repositorio oficial. "
@@ -135,6 +180,14 @@ CLAVE_RESPUESTA_BUSQUEDA = "ferms_respuesta_busqueda"
 CLAVE_INVENTARIO_SESION = "ferms_inventario_vigente"
 CLAVE_SHA_SESION = "ferms_sha_github_vigente"
 CLAVE_PRODUCTO_SELECCIONADO = "ferms_producto_seleccionado_codigo"
+CLAVE_SECCION_ACTIVA = "ferms_seccion_activa"
+
+
+class SeccionInterfaz(str, Enum):
+    """Secciones principales de navegación de FerreteríaMS v0 (Inicio público y Productos administrativo)."""
+
+    INICIO = "INICIO"
+    PRODUCTOS = "PRODUCTOS"
 
 
 class EstadoOperativoInterfaz(str, Enum):
@@ -180,11 +233,84 @@ def inicializar_estado_sesion(
         CLAVE_INVENTARIO_SESION: None,
         CLAVE_SHA_SESION: None,
         CLAVE_PRODUCTO_SELECCIONADO: None,
+        CLAVE_SECCION_ACTIVA: SeccionInterfaz.INICIO.value,
+        CLAVE_SESION_ADMIN: None,
+        CLAVE_MENSAJE_AUTH_ADMIN: None,
     }
     for clave, valor_defecto in valores_por_defecto.items():
         if clave not in destino:
             destino[clave] = valor_defecto
     return destino
+
+
+def seleccionar_seccion_interfaz(
+    seccion: SeccionInterfaz | str,
+    estado: MutableMapping[str, Any] | None = None,
+) -> SeccionInterfaz:
+    """Cambia la sección activa de la interfaz entre `INICIO` (público) y `PRODUCTOS` (administración)."""
+    destino = inicializar_estado_sesion(estado)
+    if isinstance(seccion, SeccionInterfaz):
+        seccion_enum = seccion
+    elif isinstance(seccion, str) and seccion.strip().upper() == SeccionInterfaz.PRODUCTOS.value:
+        seccion_enum = SeccionInterfaz.PRODUCTOS
+    else:
+        seccion_enum = SeccionInterfaz.INICIO
+
+    destino[CLAVE_SECCION_ACTIVA] = seccion_enum.value
+    return seccion_enum
+
+
+def obtener_seccion_activa(
+    estado: Mapping[str, Any] | None = None,
+) -> SeccionInterfaz:
+    """Devuelve la sección activa actual en el estado de sesión (`INICIO` por defecto)."""
+    origen: Mapping[str, Any] = estado if estado is not None else st.session_state
+    valor = origen.get(CLAVE_SECCION_ACTIVA, SeccionInterfaz.INICIO.value)
+    if isinstance(valor, SeccionInterfaz):
+        return valor
+    if isinstance(valor, str) and valor.strip().upper() == SeccionInterfaz.PRODUCTOS.value:
+        return SeccionInterfaz.PRODUCTOS
+    return SeccionInterfaz.INICIO
+
+
+def ejecutar_login_administrativo_en_sesion(
+    usuario: Any,
+    contrasena: Any,
+    *,
+    estado: MutableMapping[str, Any] | None = None,
+    fuente_entorno: Mapping[str, Any] | None = None,
+    fuente_secretos: Mapping[str, Any] | None = None,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+) -> ResultadoAutenticacion:
+    """Ejecuta el inicio de sesión administrativo delegando en `autenticacion.py` y actualiza el estado."""
+    destino = inicializar_estado_sesion(estado)
+    resultado = iniciar_sesion_admin(
+        usuario=usuario,
+        contrasena=contrasena,
+        estado=destino,
+        fuente_entorno=fuente_entorno,
+        fuente_secretos=fuente_secretos,
+        contexto_dispositivo=contexto_dispositivo,
+    )
+    destino[CLAVE_MENSAJE_AUTH_ADMIN] = {
+        "tipo": "success" if resultado.autenticado else "error",
+        "codigo": resultado.codigo.value,
+        "mensaje": resultado.mensaje_usuario,
+    }
+    return resultado
+
+
+def ejecutar_logout_administrativo_en_sesion(
+    estado: MutableMapping[str, Any] | None = None,
+) -> None:
+    """Cierra la sesión administrativa actual y revoca el acceso a la sección protegida."""
+    destino = inicializar_estado_sesion(estado)
+    cerrar_sesion_admin(destino)
+    destino[CLAVE_MENSAJE_AUTH_ADMIN] = {
+        "tipo": "info",
+        "codigo": "SESION_CERRADA",
+        "mensaje": MENSAJE_SESION_CERRADA,
+    }
 
 
 def limpiar_resultados_previos_en_sesion(
@@ -308,17 +434,7 @@ def procesar_consulta_busqueda_publica(
     config_github: ConfiguracionRepositorioGitHub = CONFIGURACION_POR_DEFECTO,
     descargador_remoto: DescargadorRemoto | None = None,
 ) -> RespuestaInterfazBusqueda:
-    """Orquesta la validación de entrada, lectura vigente desde GitHub y búsqueda por nombre.
-
-    Garantiza:
-    - RF-037 / CA-041: Si el término está vacío, solicita introducir un nombre sin consultar GitHub.
-    - RF-025 / RF-028: Cuando se ejecuta una búsqueda (`forzar_recarga_remota=True`), descarga la
-      versión vigente confirmada en GitHub sin requerir reinicio manual de Streamlit.
-    - Cuando el usuario navega entre páginas de una búsqueda activa (`forzar_recarga_remota=False`),
-      reutiliza el inventario validado de esa consulta activa evitando llamadas HTTP innecesarias.
-    - RF-038 / CA-042 y Sección 8.2: Distingue estrictamente entre inventario disponible,
-      inventario no inicializado, error técnico de conexión/autorización e inventario remoto inválido.
-    """
+    """Orquesta la validación de entrada, lectura vigente desde GitHub y búsqueda por nombre."""
     lector_efectivo = descargador_remoto or github_inventario.descargar_inventario_remoto
     termino_str = "" if termino_busqueda is None else str(termino_busqueda)
 
@@ -701,29 +817,51 @@ def _aplicar_estilos_locales() -> None:
 
 
 def _renderizar_banner_encabezado() -> None:
-    """Presenta la identidad visual de FerreteríaMS conforme al boceto conceptual de v0 (Sección 5.2)."""
-    st.title(f"{ICONO_PAGINA} {TITULO}")
-    st.caption(DESCRIPCION)
-    st.markdown(
-        f"""
-        <div class="ferms-banner-encabezado" role="region" aria-label="Presentación de FerreteríaMS">
-            <div class="ferms-banner-principal">
-                <span class="ferms-etiqueta-superior">{ETIQUETA_BANNER_SUPERIOR}</span>
-                <p class="ferms-marca-subtitulo">
-                    Localiza productos por su nombre y consulta su ubicación física exacta
-                    (<strong>Rack</strong>, <strong>Columna</strong>, <strong>Nivel</strong> y <strong>Posición</strong>)
-                    dentro de la ferretería desde tu computadora, tableta o teléfono.
-                </p>
+    """Presenta la identidad visual y la barra de navegación superior de FerreteríaMS (Inicio / Productos)."""
+    col_marca, col_nav_inicio, col_nav_productos = st.columns([3.4, 0.8, 0.9])
+    with col_marca:
+        st.title(f"{ICONO_PAGINA} {TITULO}")
+        st.caption(DESCRIPCION)
+
+    seccion_actual = obtener_seccion_activa()
+    with col_nav_inicio:
+        if st.button(
+            TEXTO_BOTON_NAV_INICIO,
+            key="btn_nav_inicio",
+            use_container_width=True,
+        ):
+            seleccionar_seccion_interfaz(SeccionInterfaz.INICIO)
+            st.rerun()
+    with col_nav_productos:
+        if st.button(
+            TEXTO_BOTON_NAV_PRODUCTOS,
+            key="btn_nav_productos",
+            use_container_width=True,
+        ):
+            seleccionar_seccion_interfaz(SeccionInterfaz.PRODUCTOS)
+            st.rerun()
+
+    if seccion_actual == SeccionInterfaz.INICIO:
+        st.markdown(
+            f"""
+            <div class="ferms-banner-encabezado" role="region" aria-label="Presentación de FerreteríaMS">
+                <div class="ferms-banner-principal">
+                    <span class="ferms-etiqueta-superior">{ETIQUETA_BANNER_SUPERIOR}</span>
+                    <p class="ferms-marca-subtitulo">
+                        Localiza productos por su nombre y consulta su ubicación física exacta
+                        (<strong>Rack</strong>, <strong>Columna</strong>, <strong>Nivel</strong> y <strong>Posición</strong>)
+                        dentro de la ferretería desde tu computadora, tableta o teléfono.
+                    </p>
+                </div>
+                <div class="ferms-banner-pilares" aria-label="Características del servicio de consulta">
+                    <span class="ferms-pilar-item">🛠️ Todo para tus proyectos</span>
+                    <span class="ferms-pilar-item">📍 Ubicación física en tienda</span>
+                    <span class="ferms-pilar-item">🏠 Hogar, obra y taller</span>
+                </div>
             </div>
-            <div class="ferms-banner-pilares" aria-label="Características del servicio de consulta">
-                <span class="ferms-pilar-item">🛠️ Todo para tus proyectos</span>
-                <span class="ferms-pilar-item">📍 Ubicación física en tienda</span>
-                <span class="ferms-pilar-item">🏠 Hogar, obra y taller</span>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 def _renderizar_estado_inicial() -> None:
@@ -735,13 +873,7 @@ def _renderizar_estado_inicial() -> None:
 
 
 def _renderizar_seccion_gemini_proximamente() -> None:
-    """Presenta el área visual reservada para el Asistente Gemini en v0 (Sección 6, RF-032..RF-034, CA-031..CA-033).
-
-    Garantiza:
-    - Identificación clara como «Asistente Gemini» y estado «Próximamente».
-    - Información descriptiva estática sobre su futuro propósito en la entrega final.
-    - Ausencia total de cuadros de chat, botones engañosos, clientes de IA o llamadas a Gemini API.
-    """
+    """Presenta el área visual reservada para el Asistente Gemini en v0 (Sección 6, RF-032..RF-034, CA-031..CA-033)."""
     with st.container(border=True):
         st.subheader(f"✨ {TITULO_SECCION_GEMINI}")
         st.markdown(f"**Estado:** `{ESTADO_GEMINI_PROXIMAMENTE}`")
@@ -763,6 +895,187 @@ def _renderizar_seccion_gemini_proximamente() -> None:
         st.caption(
             "Próximamente en la entrega final · Sin chat activo en FerreteríaMS v0."
         )
+
+
+def formatear_nombre_usuario_admin_seguro(usuario: Any) -> str:
+    """Escapa caracteres especiales HTML del nombre administrativo para presentación segura."""
+    if not isinstance(usuario, str):
+        return ""
+    return html.escape(usuario.strip(), quote=True)
+
+
+def _mostrar_retroalimentacion_auth_pendiente() -> None:
+    """Muestra y limpia el último mensaje de estado de autenticación almacenado en sesión."""
+    aviso = st.session_state.get(CLAVE_MENSAJE_AUTH_ADMIN)
+    if not isinstance(aviso, Mapping):
+        return
+    mensaje_seguro = ocultar_secretos_autenticacion(str(aviso.get("mensaje", "")))
+    if not mensaje_seguro:
+        return
+    tipo = str(aviso.get("tipo", "info"))
+    if tipo == "success":
+        st.success(mensaje_seguro)
+    elif tipo == "error":
+        st.error(mensaje_seguro)
+    elif tipo == "warning":
+        st.warning(mensaje_seguro)
+    else:
+        st.info(mensaje_seguro)
+
+
+def _renderizar_seccion_administrativa_productos() -> None:
+    """Renderiza la sección administrativa `Productos` con protección en Python (Secciones 8 y 9 del Prompt 07).
+
+    Cumple:
+    - RF-011, RF-012 / CA-009: Presenta el formulario Login/Logout al acceder a Productos.
+    - RF-013 / CA-019: Rechaza el acceso administrativo cuando se detecta un contexto móvil y
+      muestra la advertencia de que la administración es exclusiva para computadora.
+    - CA-010, CA-011: Verifica credenciales con Argon2id y habilita únicamente la vista administrativa
+      inicial (sin formularios de mantenimiento, que corresponden al Prompt 09).
+    """
+    st.markdown(
+        f"""
+        <div class="ferms-aviso-solo-escritorio" role="note">
+            <strong>💻 Acceso administrativo exclusivo para computadora:</strong>
+            {MENSAJE_RESTRICCION_MOVIL_ADMIN}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    contexto_dispositivo = detectar_contexto_dispositivo(estado=st.session_state)
+    if contexto_dispositivo == ContextoDispositivo.MOVIL:
+        st.subheader(f"🔒 {TITULO_SECCION_ADMIN_LOGIN}")
+        st.warning(MENSAJE_RESTRICCION_MOVIL_ADMIN)
+        if st.button(
+            TEXTO_BOTON_VOLVER_SITIO,
+            key="btn_volver_inicio_desde_admin",
+            use_container_width=True,
+        ):
+            seleccionar_seccion_interfaz(SeccionInterfaz.INICIO)
+            st.rerun()
+        return
+
+    # Validación efectiva en Python del estado autenticado de la sesión (Sección 8.3)
+    if not esta_autenticado_en_sesion(
+        st.session_state, contexto_dispositivo=contexto_dispositivo
+    ):
+        st.subheader(f"🔒 {TITULO_SECCION_ADMIN_LOGIN}")
+        st.markdown(
+            f"""
+            <div class="ferms-admin-login-panel" role="region" aria-label="Acceso restringido de administración">
+                <div class="ferms-admin-candado-icono" aria-hidden="true">🔒</div>
+                <p class="ferms-admin-login-titulo">FerreteríaMS — {TITULO_SECCION_ADMIN_LOGIN}</p>
+                <p class="ferms-admin-login-subtitulo">{SUBTITULO_SECCION_ADMIN_LOGIN}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        verificacion_cfg = obtener_configuracion_admin()
+        if not verificacion_cfg.es_valida:
+            st.warning(verificacion_cfg.mensaje_usuario)
+
+        _mostrar_retroalimentacion_auth_pendiente()
+
+        with st.container(border=True):
+            usuario_input = st.text_input(
+                label="Usuario administrativo",
+                placeholder="Usuario",
+                key="campo_admin_usuario",
+            )
+            contrasena_input = st.text_input(
+                label="Contraseña administrativa",
+                placeholder="Contraseña",
+                type="password",
+                key="campo_admin_contrasena",
+            )
+
+            col_login, col_volver = st.columns(2)
+            with col_login:
+                login_presionado = st.button(
+                    TEXTO_BOTON_LOGIN_ADMIN,
+                    key="btn_admin_iniciar_sesion",
+                    type="primary",
+                    use_container_width=True,
+                )
+            with col_volver:
+                volver_presionado = st.button(
+                    TEXTO_BOTON_VOLVER_SITIO,
+                    key="btn_volver_inicio_desde_admin",
+                    use_container_width=True,
+                )
+
+            if volver_presionado:
+                st.session_state[CLAVE_MENSAJE_AUTH_ADMIN] = None
+                seleccionar_seccion_interfaz(SeccionInterfaz.INICIO)
+                st.rerun()
+
+            if login_presionado:
+                ejecutar_login_administrativo_en_sesion(
+                    usuario_input,
+                    contrasena_input,
+                    estado=st.session_state,
+                    contexto_dispositivo=contexto_dispositivo,
+                )
+                st.rerun()
+
+        st.caption(
+            "🛡️ Área restringida para administración · Exclusivo para personal autorizado desde computadora."
+        )
+        return
+
+    # Verificación obligatoria de autorización en Python antes de renderizar contenido administrativo
+    try:
+        sesion_admin = requerir_autorizacion_admin(
+            st.session_state, contexto_dispositivo=contexto_dispositivo
+        )
+    except ErrorAutorizacionAdmin as exc_auth:
+        st.error(exc_auth.mensaje)
+        return
+
+    st.subheader(f"📦 {TITULO_SECCION_PRODUCTOS_ADMIN}")
+    _mostrar_retroalimentacion_auth_pendiente()
+
+    usuario_presentacion_segura = formatear_nombre_usuario_admin_seguro(
+        sesion_admin.usuario
+    )
+    st.markdown(
+        """
+        <div class="ferms-admin-panel-autorizado" role="region" aria-label="Panel administrativo de Productos">
+            <span class="ferms-admin-etiqueta-gestion">GESTIÓN DE PRODUCTOS · ACCESO AUTORIZADO</span>
+            <p class="ferms-marca-subtitulo">
+                Sesión administrativa verificada para la cuenta única en la interfaz web de escritorio.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        f"👤 Cuenta administrativa autenticada: {usuario_presentacion_segura}"
+    )
+
+    col_logout, col_volver_pub = st.columns(2)
+    with col_logout:
+        if st.button(
+            TEXTO_BOTON_LOGOUT_ADMIN,
+            key="btn_admin_cerrar_sesion",
+            use_container_width=True,
+        ):
+            ejecutar_logout_administrativo_en_sesion(st.session_state)
+            st.rerun()
+    with col_volver_pub:
+        if st.button(
+            TEXTO_BOTON_VOLVER_SITIO,
+            key="btn_volver_inicio_desde_admin",
+            use_container_width=True,
+        ):
+            seleccionar_seccion_interfaz(SeccionInterfaz.INICIO)
+            st.rerun()
+
+    with st.container(border=True):
+        st.info(f"ℹ️ {MENSAJE_MANTENIMIENTO_PENDIENTE_P09}")
+        st.caption(NOTA_CONTROLES_SESION_PENDIENTES_P08)
 
 
 def _renderizar_area_inventario(
@@ -909,13 +1222,7 @@ def _renderizar_area_inventario(
 def renderizar_aplicacion(
     descargador_remoto: DescargadorRemoto | None = None,
 ) -> None:
-    """Construye y renderiza la interfaz pública responsive de FerreteríaMS v0 en Streamlit.
-
-    Distribución responsive (Sección 7 del Prompt 06):
-    - Escritorio: Dos áreas diferenciadas en paralelo (`col_inventario` a la izquierda y `col_gemini` a la derecha).
-    - Tableta y teléfono: Apilamiento vertical automático (1. Encabezado FerreteríaMS, 2. Buscador,
-      3. Resultados o detalles, 4. Área Gemini «Próximamente») sin desplazamiento horizontal.
-    """
+    """Construye y renderiza la interfaz pública responsive y la sección administrativa de FerreteríaMS v0."""
     st.set_page_config(
         page_title=TITULO,
         page_icon=ICONO_PAGINA,
@@ -924,13 +1231,16 @@ def renderizar_aplicacion(
     _aplicar_estilos_locales()
     inicializar_estado_sesion()
 
-    # 1. Encabezado e identidad visual de FerreteríaMS (Secciones 5.1 y 5.2)
+    # 1. Encabezado, identidad visual y navegación (Inicio / Productos)
     _renderizar_banner_encabezado()
 
-    # 2. Composición responsive: Inventario a la izquierda y Gemini «Próximamente» a la derecha (Sección 7)
-    col_inventario, col_gemini = st.columns([2.35, 1], gap="large")
-    with col_inventario:
-        _renderizar_area_inventario(descargador_remoto=descargador_remoto)
+    # 2. Composición principal a la izquierda (Inicio público o Productos protegido) y Gemini a la derecha
+    col_principal, col_gemini = st.columns([2.35, 1], gap="large")
+    with col_principal:
+        if obtener_seccion_activa() == SeccionInterfaz.PRODUCTOS:
+            _renderizar_seccion_administrativa_productos()
+        else:
+            _renderizar_area_inventario(descargador_remoto=descargador_remoto)
     with col_gemini:
         _renderizar_seccion_gemini_proximamente()
 
