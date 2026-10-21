@@ -2111,6 +2111,28 @@ class TestPrompt10PersistenciaInventarioGitHub(unittest.TestCase):
                     ejecutor_http_put=ejecutor_prohibido,  # type: ignore[arg-type]
                     reloj=self.reloj,
                 )
+
+        # 4. Ante un resultado de escritura ambiguo (p. ej. respuesta 200 sin SHA o timeout),
+        # se revoca la confirmación en sesión y no se permite reutilizar la misma instancia de solicitud
+        estado[CLAVE_CONFIRMACION_GUARDADO_GITHUB] = True
+        with self.assertRaises(ErrorRespuestaInesperadaEscrituraGitHub):
+            publicar_cambios_administrativos_github(
+                estado,
+                confirmacion_explicita=True,
+                fuente_secretos=self.secretos_validos,
+                consultor_existencia=lambda **_: _existencia_remota_existe(
+                    SHA_BASE_SIMULADO
+                ),
+                ejecutor_http_put=lambda *a, **k: RespuestaHTTPGitHub(
+                    status_code=200, cuerpo=b"{}"
+                ),
+                reloj=self.reloj,
+            )
+        self.assertFalse(estado[CLAVE_CONFIRMACION_GUARDADO_GITHUB])
+        persist_gh._registrar_despacho_unico_solicitud_put(solicitud)
+        self.assertTrue(getattr(solicitud, "_despachada", False))
+        with self.assertRaises(ErrorPublicacionDuplicadaGitHub):
+            persist_gh._registrar_despacho_unico_solicitud_put(solicitud)
         self.assertTrue(estado[CLAVE_ESPACIO_TRABAJO_ADMIN].tiene_cambios_locales_pendientes)
 
     # ------------------------------------------------------------------

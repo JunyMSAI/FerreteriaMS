@@ -34,16 +34,24 @@ from __future__ import annotations
 
 import base64
 import binascii
+import functools
 import hashlib
+import http.client
 import json
+from pathlib import Path
 import re
 import socket
+import sys
 import time
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Mapping, MutableMapping
+
+_DIRECTORIO_ACTUAL = Path(__file__).resolve().parent
+if str(_DIRECTORIO_ACTUAL) not in sys.path:
+    sys.path.insert(0, str(_DIRECTORIO_ACTUAL))
 
 from administracion_productos import (
     CLAVE_ESPACIO_TRABAJO_ADMIN,
@@ -695,6 +703,7 @@ class SolicitudPutContentsGitHub:
     sha_base_enviado: str | None
     sha256_excel: str
     tamano_excel_bytes: int
+    _despachada: bool = field(default=False, init=False, repr=False, compare=False)
 
     def __repr__(self) -> str:
         encabezados_seguros = _redactar_encabezados_representacion(self.encabezados)
@@ -1212,10 +1221,18 @@ def ejecutar_solicitud_put_github(
     if not token_en_encabezado:
         raise ErrorTokenEscrituraFaltanteGitHub()
 
+    url_oficial_autorizada = validar_destino_escritura_github(CONFIGURACION_POR_DEFECTO)
+    if not isinstance(url, str) or url.strip() != url_oficial_autorizada:
+        raise ErrorDestinoEscrituraNoAutorizadoGitHub(
+            MENSAJE_ERROR_DESTINO_ESCRITURA,
+            detalle_tecnico="La URL de escritura no coincide exactamente con el destino oficial autorizado.",
+        )
+
     try:
         validar_url_solicitud_github(
             url,
             encabezados=encabezados,
+            config=CONFIGURACION_POR_DEFECTO,
             token=token_en_encabezado,
             contexto="escritura en GitHub Contents API",
         )
@@ -1609,17 +1626,55 @@ def calcular_huella_publicacion(
     return hashlib.sha256(cadena_base.encode("utf-8")).hexdigest()
 
 
+def _registrar_despacho_unico_solicitud_put(
+    solicitud: SolicitudPutContentsGitHub,
+) -> None:
+    """Impide reutilizar una misma instancia de solicitud `SolicitudPutContentsGitHub` ya despachada."""
+    if not isinstance(solicitud, SolicitudPutContentsGitHub):
+        raise ErrorSerializacionInventarioPersistente(
+            "La solicitud PUT proporcionada no es una instancia válida de SolicitudPutContentsGitHub.",
+            codigo=CodigoErrorPersistenciaGitHub.SERIALIZACION_INVALIDA,
+        )
+    if getattr(solicitud, "_despachada", False) is True:
+        raise ErrorPublicacionDuplicadaGitHub(
+            "No se permite reutilizar una solicitud de escritura que ya fue despachada o cuyo resultado fue ambiguo."
+        )
+    object.__setattr__(solicitud, "_despachada", True)
+
+
+def _desenvolver_ejecutor_candidato(ejecutor: Any) -> tuple[Any, ...]:
+    """Desenvuelve `functools.partial`, `__wrapped__` y métodos enlazados para inspección de transporte."""
+    vistos: list[Any] = []
+    actual = ejecutor
+    for _ in range(16):
+        if actual is None or any(actual is v for v in vistos):
+            break
+        vistos.append(actual)
+        if isinstance(actual, functools.partial):
+            actual = actual.func
+            continue
+        envuelto = getattr(actual, "__wrapped__", None)
+        if envuelto is not None:
+            actual = envuelto
+            continue
+        break
+    return tuple(vistos)
+
+
 def _verificar_transporte_escritura_autorizado(
     ejecutor_http_put: EjecutorHTTPPut | None,
 ) -> None:
-    """Verifica la separación estricta entre transporte simulado de pruebas y escritura real en red.
+    """Verifica la separación entre el transporte real de producción y el transporte simulado de pruebas.
 
     Mientras `ESCRITURA_REAL_GITHUB_HABILITADA` no sea `True`:
-    - Si no se inyecta `ejecutor_http_put`, la ejecución delega en `ejecutar_solicitud_put_github`,
-      cuya compuerta incondicional rechaza cualquier escritura real con `ErrorEscrituraRealNoAutorizadaGitHub`.
-    - Si se intenta inyectar como `ejecutor_http_put` la propia función `ejecutar_solicitud_put_github`
-      o primitivas de red reales (`urllib.request`, `http.client`, `socket`, `ssl`, `OpenerDirector`),
-      rechaza la operación inmediatamente con `ErrorEscrituraRealNoAutorizadaGitHub`.
+    - En la ruta operativa de la aplicación (`ejecutor_http_put is None`), la ejecución delega
+      en `ejecutar_solicitud_put_github`, cuya compuerta incondicional rechaza cualquier
+      escritura real con `ErrorEscrituraRealNoAutorizadaGitHub`.
+    - Si en una llamada se intenta pasar como `ejecutor_http_put` la propia función
+      `ejecutar_solicitud_put_github` o primitivas estándar de red (`urllib.request`,
+      `http.client`, `socket`, `ssl`, `OpenerDirector`), directamente o envueltas con
+      `functools.partial` / `__wrapped__`, rechaza la operación con
+      `ErrorEscrituraRealNoAutorizadaGitHub` sin modificar globalmente módulos de red.
     """
     if ejecutor_http_put is None:
         return
@@ -1630,17 +1685,21 @@ def _verificar_transporte_escritura_autorizado(
         )
 
     if ESCRITURA_REAL_GITHUB_HABILITADA is not True:
-        modulo_ejecutor = str(getattr(ejecutor_http_put, "__module__", "") or "").strip()
-        dueno_metodo = getattr(ejecutor_http_put, "__self__", None)
-        if (
-            ejecutor_http_put is ejecutar_solicitud_put_github
-            or ejecutor_http_put is urllib.request.urlopen
-            or modulo_ejecutor in ("urllib.request", "http.client", "socket", "ssl")
-            or isinstance(dueno_metodo, urllib.request.OpenerDirector)
-        ):
-            raise ErrorEscrituraRealNoAutorizadaGitHub(
-                "No se permite utilizar un ejecutor de red real mientras ESCRITURA_REAL_GITHUB_HABILITADA sea False."
-            )
+        for candidato in _desenvolver_ejecutor_candidato(ejecutor_http_put):
+            modulo_ejecutor = str(getattr(candidato, "__module__", "") or "").strip()
+            dueno_metodo = getattr(candidato, "__self__", None)
+            if (
+                candidato is ejecutar_solicitud_put_github
+                or candidato is urllib.request.urlopen
+                or modulo_ejecutor in ("urllib.request", "http.client", "socket", "ssl")
+                or isinstance(
+                    dueno_metodo,
+                    (urllib.request.OpenerDirector, http.client.HTTPConnection, socket.socket),
+                )
+            ):
+                raise ErrorEscrituraRealNoAutorizadaGitHub(
+                    "No se permite utilizar un ejecutor de red real mientras ESCRITURA_REAL_GITHUB_HABILITADA sea False."
+                )
 
 
 def publicar_cambios_administrativos_github(
@@ -1890,70 +1949,79 @@ def publicar_cambios_administrativos_github(
 
     # 8. Verificar compuerta de transporte y ejecutar solicitud PUT hacia GitHub Contents API
     _verificar_transporte_escritura_autorizado(ejecutor_http_put)
-    if ejecutor_http_put is not None:
-        try:
-            respuesta_put = ejecutor_http_put(
+    _registrar_despacho_unico_solicitud_put(solicitud_put)
+    try:
+        if ejecutor_http_put is not None:
+            try:
+                respuesta_put = ejecutor_http_put(
+                    solicitud_put.url,
+                    solicitud_put.encabezados,
+                    solicitud_put.cuerpo_json_bytes,
+                    TIMEOUT_ESCRITURA_POR_DEFECTO,
+                )
+            except ErrorPersistenciaGitHub:
+                raise
+            except (TimeoutError, socket.timeout) as exc_to:
+                raise ErrorRedOTimeoutEscrituraGitHub(
+                    MENSAJE_ERROR_RED_ESCRITURA,
+                    codigo=CodigoErrorPersistenciaGitHub.TIEMPO_ESPERA_AGOTADO,
+                    detalle_tecnico=str(exc_to),
+                    token=token_resuelto,
+                ) from exc_to
+            except (urllib.error.URLError, OSError) as exc_red:
+                raise ErrorRedOTimeoutEscrituraGitHub(
+                    MENSAJE_ERROR_RED_ESCRITURA,
+                    codigo=CodigoErrorPersistenciaGitHub.CONEXION_RED_FALLIDA,
+                    detalle_tecnico=str(exc_red),
+                    token=token_resuelto,
+                ) from exc_red
+        else:
+            respuesta_put = ejecutar_solicitud_put_github(
                 solicitud_put.url,
                 solicitud_put.encabezados,
                 solicitud_put.cuerpo_json_bytes,
                 TIMEOUT_ESCRITURA_POR_DEFECTO,
             )
-        except ErrorPersistenciaGitHub:
-            raise
-        except (TimeoutError, socket.timeout) as exc_to:
-            raise ErrorRedOTimeoutEscrituraGitHub(
-                MENSAJE_ERROR_RED_ESCRITURA,
-                codigo=CodigoErrorPersistenciaGitHub.TIEMPO_ESPERA_AGOTADO,
-                detalle_tecnico=str(exc_to),
-                token=token_resuelto,
-            ) from exc_to
-        except (urllib.error.URLError, OSError) as exc_red:
-            raise ErrorRedOTimeoutEscrituraGitHub(
-                MENSAJE_ERROR_RED_ESCRITURA,
-                codigo=CodigoErrorPersistenciaGitHub.CONEXION_RED_FALLIDA,
-                detalle_tecnico=str(exc_red),
-                token=token_resuelto,
-            ) from exc_red
-    else:
-        respuesta_put = ejecutar_solicitud_put_github(
-            solicitud_put.url,
-            solicitud_put.encabezados,
-            solicitud_put.cuerpo_json_bytes,
-            TIMEOUT_ESCRITURA_POR_DEFECTO,
-        )
 
-    try:
-        nuevo_sha_archivo, sha_commit = interpretar_respuesta_put_github(
-            respuesta_put,
-            modo_publicacion=modo_efectivo,
-            sha_base_enviado=solicitud_put.sha_base_enviado,
-            token=token_resuelto,
-        )
-    except ErrorConflictoVersionShaGitHub as exc_conflicto_put:
-        conflicto_put = EstadoConflictoShaAdmin(
-            sha_base_local=solicitud_put.sha_base_enviado,
-            sha_remoto_detectado=exc_conflicto_put.sha_remoto_actual,
-            modo_publicacion=modo_efectivo,
-            detectado_en="respuesta_put",
-            mensaje_usuario=MENSAJE_CONFLICTO_SHA_DETECTADO,
-            detalle_tecnico=exc_conflicto_put.detalle_tecnico,
-            detectado_en_epoch=instante_actual,
-            cambios_locales_preservados=True,
-        )
-        estado[CLAVE_CONFLICTO_SHA_ADMIN] = conflicto_put
-        raise
-    except ErrorInventarioRemotoYaExiste as exc_ya_existe_put:
-        conflicto_ya_existe = EstadoConflictoShaAdmin(
-            sha_base_local=None,
-            sha_remoto_detectado=exc_ya_existe_put.sha_remoto_actual,
-            modo_publicacion=modo_efectivo,
-            detectado_en="respuesta_put",
-            mensaje_usuario=MENSAJE_ARCHIVO_REMOTO_YA_EXISTE,
-            detalle_tecnico=exc_ya_existe_put.detalle_tecnico,
-            detectado_en_epoch=instante_actual,
-            cambios_locales_preservados=True,
-        )
-        estado[CLAVE_CONFLICTO_SHA_ADMIN] = conflicto_ya_existe
+        try:
+            nuevo_sha_archivo, sha_commit = interpretar_respuesta_put_github(
+                respuesta_put,
+                modo_publicacion=modo_efectivo,
+                sha_base_enviado=solicitud_put.sha_base_enviado,
+                token=token_resuelto,
+            )
+        except ErrorConflictoVersionShaGitHub as exc_conflicto_put:
+            conflicto_put = EstadoConflictoShaAdmin(
+                sha_base_local=solicitud_put.sha_base_enviado,
+                sha_remoto_detectado=exc_conflicto_put.sha_remoto_actual,
+                modo_publicacion=modo_efectivo,
+                detectado_en="respuesta_put",
+                mensaje_usuario=MENSAJE_CONFLICTO_SHA_DETECTADO,
+                detalle_tecnico=exc_conflicto_put.detalle_tecnico,
+                detectado_en_epoch=instante_actual,
+                cambios_locales_preservados=True,
+            )
+            estado[CLAVE_CONFLICTO_SHA_ADMIN] = conflicto_put
+            raise
+        except ErrorInventarioRemotoYaExiste as exc_ya_existe_put:
+            conflicto_ya_existe = EstadoConflictoShaAdmin(
+                sha_base_local=None,
+                sha_remoto_detectado=exc_ya_existe_put.sha_remoto_actual,
+                modo_publicacion=modo_efectivo,
+                detectado_en="respuesta_put",
+                mensaje_usuario=MENSAJE_ARCHIVO_REMOTO_YA_EXISTE,
+                detalle_tecnico=exc_ya_existe_put.detalle_tecnico,
+                detectado_en_epoch=instante_actual,
+                cambios_locales_preservados=True,
+            )
+            estado[CLAVE_CONFLICTO_SHA_ADMIN] = conflicto_ya_existe
+            raise
+    except Exception:
+        # Si la solicitud de escritura falla o devuelve un resultado ambiguo,
+        # revocar la confirmación en sesión para impedir cualquier reenvío automático.
+        estado[CLAVE_CONFIRMACION_GUARDADO_GITHUB] = False
+        if "chk_admin_confirmar_publicacion_github" in estado:
+            estado["chk_admin_confirmar_publicacion_github"] = False
         raise
 
     # 9. Confirmación exitosa: actualizar atómicamente el estado local, el SHA base y limpiar borradores
