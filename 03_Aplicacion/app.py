@@ -1,19 +1,20 @@
-"""Interfaz pública responsive, sección visual Gemini («Próximamente») y autenticación administrativa de FerreteríaMS v0.
+"""Interfaz pública responsive, sección visual Gemini («Próximamente») y seguridad administrativa avanzada de FerreteríaMS v0.
 
 Proyecto: FerreteríaMS v0
-Tareas: FERMS-V0-P04, FERMS-V0-P05, FERMS-V0-P06, FERMS-V0-P07
+Tareas: FERMS-V0-P04, FERMS-V0-P05, FERMS-V0-P06, FERMS-V0-P07, FERMS-V0-P08
 Requisitos relacionados: RF-001, RF-002, RF-003, RF-004, RF-005, RF-006, RF-007, RF-008,
 RF-009, RF-010, RF-011, RF-012, RF-013 (parcial), RF-024, RF-025, RF-028, RF-032, RF-033,
-RF-034, RF-035, RF-036, RF-037, RF-038.
+RF-034, RF-035, RF-036, RF-037, RF-038, Sección 5.3 y Sección 6.3.
 Criterios relacionados: CA-001, CA-002, CA-003, CA-004, CA-005, CA-006, CA-007, CA-008,
-CA-009, CA-010, CA-011, CA-019 (parcial), CA-027 (parcial), CA-028, CA-029, CA-030 (parcial),
-CA-031, CA-032, CA-033, CA-034, CA-039, CA-040, CA-041, CA-042, CA-043, CA-058 (parcial),
-CA-059, CA-060, CA-061.
+CA-009, CA-010, CA-011, CA-019 (parcial), CA-027 (parcial), CA-028, CA-029, CA-030,
+CA-031, CA-032, CA-033, CA-034, CA-039, CA-040, CA-041, CA-042, CA-043, CA-052, CA-053,
+CA-054, CA-055, CA-056, CA-057, CA-058 (parcial), CA-059, CA-060, CA-061.
 """
 
 from __future__ import annotations
 
 import html
+import math
 import sys
 from dataclasses import dataclass
 from enum import Enum
@@ -29,31 +30,52 @@ if str(_DIRECTORIO_ACTUAL) not in sys.path:
 import autenticacion  # noqa: E402
 import github_inventario  # noqa: E402
 from autenticacion import (  # noqa: E402
+    CLAVE_BORRADOR_RESTAURADO_ADMIN,
     CLAVE_CONTEXTO_DISPOSITIVO,
     CLAVE_MENSAJE_AUTH_ADMIN,
+    CLAVE_MOTIVO_FIN_SESION_ADMIN,
     CLAVE_SESION_ADMIN,
+    CLAVE_VINCULO_BORRADOR_SESION,
     MENSAJE_ACCESO_NO_AUTORIZADO,
     MENSAJE_ADMIN_CONFIGURACION_INVALIDA,
     MENSAJE_ADMIN_NO_CONFIGURADO,
     MENSAJE_AUTENTICACION_EXITOSA,
+    MENSAJE_BORRADOR_DESCARTADO,
+    MENSAJE_BORRADOR_RESTAURADO,
+    MENSAJE_BORRADOR_RETENIDO_REAUTENTICACION,
     MENSAJE_CREDENCIALES_INCOMPLETAS,
     MENSAJE_CREDENCIALES_INVALIDAS,
     MENSAJE_RESTRICCION_MOVIL_ADMIN,
     MENSAJE_SESION_CERRADA,
+    MENSAJE_SESION_EXPIRADA_INACTIVIDAD,
+    MENSAJE_SESION_RENOVADA,
+    TEXTO_BOTON_CONTINUAR_SESION,
+    BorradorTemporalAdmin,
     CodigoResultadoAutenticacion,
     ContextoDispositivo,
     ErrorAutorizacionAdmin,
+    EstadoBloqueoAdmin,
     EstadoConfiguracionAdmin,
     EstadoSesionAdmin,
+    EstadoTiempoSesionAdmin,
+    ProveedorReloj,
     ResultadoAutenticacion,
     cerrar_sesion_admin,
+    consultar_estado_bloqueo_admin,
+    consultar_estado_sesion_admin,
+    descartar_borrador_admin,
     detectar_contexto_dispositivo,
     esta_autenticado_en_sesion,
+    guardar_borrador_admin,
     iniciar_sesion_admin,
+    obtener_borrador_admin,
     obtener_configuracion_admin,
     obtener_usuario_autenticado,
-     ocultar_secretos_autenticacion,
+    ocultar_secretos_autenticacion,
+    renovar_sesion_admin,
     requerir_autorizacion_admin,
+    restaurar_borrador_admin,
+    tiene_borrador_pendiente_en_sesion,
     verificar_configuracion_admin,
 )
 from busqueda import (  # noqa: E402
@@ -137,7 +159,7 @@ NOTA_ESTADO_GEMINI_V0: str = (
     "el asistente conversacional ni se realizan consultas a modelos de inteligencia artificial."
 )
 
-# Constantes de navegación y sección administrativa (Sección 8 del Prompt 07)
+# Constantes de navegación y sección administrativa (Prompts 07 y 08)
 TEXTO_BOTON_NAV_INICIO: str = "🏠 Inicio"
 TEXTO_BOTON_NAV_PRODUCTOS: str = "📦 Productos"
 TITULO_SECCION_ADMIN_LOGIN: str = "Acceso de administración"
@@ -148,15 +170,17 @@ TITULO_SECCION_PRODUCTOS_ADMIN: str = "Productos — Panel administrativo"
 TEXTO_BOTON_LOGIN_ADMIN: str = "🔐 Iniciar sesión"
 TEXTO_BOTON_LOGOUT_ADMIN: str = "🚪 Cerrar sesión (Logout)"
 TEXTO_BOTON_VOLVER_SITIO: str = "🏠 Volver al buscador público"
+TEXTO_BOTON_RESTAURAR_BORRADOR: str = "📥 Restaurar borrador temporal"
+TEXTO_BOTON_DESCARTAR_BORRADOR: str = "🗑️ Descartar borrador temporal"
 MENSAJE_MANTENIMIENTO_PENDIENTE_P09: str = (
     "Las funciones operativas de mantenimiento del inventario (registro, edición de productos "
     "y asignación de ubicaciones físicas) se implementarán en etapas posteriores autorizadas."
 )
 NOTA_CONTROLES_SESION_PENDIENTES_P08: str = (
-    "Nota de seguridad de la etapa actual (Prompt 07): la autenticación básica y verificación "
-    "por hash Argon2id están activas. Los controles avanzados de expiración por inactividad "
-    "(15 minutos), advertencia previa y bloqueos progresivos por intentos fallidos se "
-    "integrarán en el Prompt 08."
+    "Nota de seguridad activa (Prompts 07 y 08): verificación por hash Argon2id, límite de "
+    "5 intentos fallidos con bloqueos progresivos (5, 10, 20 y 30 min), expiración tras "
+    "15 minutos de inactividad, aviso previo 2 minutos antes (minuto 13), renovación mediante "
+    "«Continuar sesión» y retención temporal de borradores por 15 minutos adicionales."
 )
 
 # Mensajes diferenciados para los estados del inventario remoto (Sección 8.2 del Prompt 04)
@@ -236,6 +260,9 @@ def inicializar_estado_sesion(
         CLAVE_SECCION_ACTIVA: SeccionInterfaz.INICIO.value,
         CLAVE_SESION_ADMIN: None,
         CLAVE_MENSAJE_AUTH_ADMIN: None,
+        CLAVE_VINCULO_BORRADOR_SESION: None,
+        CLAVE_BORRADOR_RESTAURADO_ADMIN: None,
+        CLAVE_MOTIVO_FIN_SESION_ADMIN: None,
     }
     for clave, valor_defecto in valores_por_defecto.items():
         if clave not in destino:
@@ -281,6 +308,7 @@ def ejecutar_login_administrativo_en_sesion(
     fuente_entorno: Mapping[str, Any] | None = None,
     fuente_secretos: Mapping[str, Any] | None = None,
     contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
 ) -> ResultadoAutenticacion:
     """Ejecuta el inicio de sesión administrativo delegando en `autenticacion.py` y actualiza el estado."""
     destino = inicializar_estado_sesion(estado)
@@ -291,6 +319,7 @@ def ejecutar_login_administrativo_en_sesion(
         fuente_entorno=fuente_entorno,
         fuente_secretos=fuente_secretos,
         contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
     )
     destino[CLAVE_MENSAJE_AUTH_ADMIN] = {
         "tipo": "success" if resultado.autenticado else "error",
@@ -300,12 +329,94 @@ def ejecutar_login_administrativo_en_sesion(
     return resultado
 
 
+def ejecutar_renovacion_sesion_en_sesion(
+    estado: MutableMapping[str, Any] | None = None,
+    *,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+) -> EstadoSesionAdmin | None:
+    """Renueva explícitamente una sesión administrativa activa mediante «Continuar sesión» (Sección 8)."""
+    destino = inicializar_estado_sesion(estado)
+    try:
+        sesion_renovada = renovar_sesion_admin(
+            destino,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+        )
+        destino[CLAVE_MENSAJE_AUTH_ADMIN] = {
+            "tipo": "success",
+            "codigo": "SESION_RENOVADA",
+            "mensaje": MENSAJE_SESION_RENOVADA,
+        }
+        return sesion_renovada
+    except ErrorAutorizacionAdmin as exc_auth:
+        destino[CLAVE_MENSAJE_AUTH_ADMIN] = {
+            "tipo": "warning"
+            if exc_auth.codigo == CodigoResultadoAutenticacion.SESION_EXPIRADA
+            else "error",
+            "codigo": exc_auth.codigo.value,
+            "mensaje": exc_auth.mensaje,
+        }
+        return None
+
+
+def ejecutar_restauracion_borrador_en_sesion(
+    estado: MutableMapping[str, Any] | None = None,
+    *,
+    eliminar_tras_restaurar: bool = False,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+) -> BorradorTemporalAdmin | None:
+    """Restaura un borrador temporal en la sesión autenticada actual."""
+    destino = inicializar_estado_sesion(estado)
+    try:
+        borrador = restaurar_borrador_admin(
+            destino,
+            eliminar_tras_restaurar=eliminar_tras_restaurar,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+        )
+        if borrador is not None:
+            destino[CLAVE_MENSAJE_AUTH_ADMIN] = {
+                "tipo": "success",
+                "codigo": "BORRADOR_RESTAURADO",
+                "mensaje": MENSAJE_BORRADOR_RESTAURADO,
+            }
+        return borrador
+    except ErrorAutorizacionAdmin as exc_auth:
+        destino[CLAVE_MENSAJE_AUTH_ADMIN] = {
+            "tipo": "error",
+            "codigo": exc_auth.codigo.value,
+            "mensaje": exc_auth.mensaje,
+        }
+        return None
+
+
+def ejecutar_descarte_borrador_en_sesion(
+    estado: MutableMapping[str, Any] | None = None,
+    *,
+    reloj: ProveedorReloj | None = None,
+) -> bool:
+    """Descarta y elimina de forma segura el borrador temporal asociado a la sesión."""
+    destino = inicializar_estado_sesion(estado)
+    eliminado = descartar_borrador_admin(destino, reloj=reloj)
+    if eliminado:
+        destino[CLAVE_MENSAJE_AUTH_ADMIN] = {
+            "tipo": "info",
+            "codigo": "BORRADOR_DESCARTADO",
+            "mensaje": MENSAJE_BORRADOR_DESCARTADO,
+        }
+    return eliminado
+
+
 def ejecutar_logout_administrativo_en_sesion(
     estado: MutableMapping[str, Any] | None = None,
+    *,
+    reloj: ProveedorReloj | None = None,
 ) -> None:
-    """Cierra la sesión administrativa actual y revoca el acceso a la sección protegida."""
+    """Cierra la sesión administrativa actual, revoca el acceso y elimina borradores temporales."""
     destino = inicializar_estado_sesion(estado)
-    cerrar_sesion_admin(destino)
+    cerrar_sesion_admin(destino, conservar_borrador_temporal=False, reloj=reloj)
     destino[CLAVE_MENSAJE_AUTH_ADMIN] = {
         "tipo": "info",
         "codigo": "SESION_CERRADA",
@@ -924,7 +1035,7 @@ def _mostrar_retroalimentacion_auth_pendiente() -> None:
 
 
 def _renderizar_seccion_administrativa_productos() -> None:
-    """Renderiza la sección administrativa `Productos` con protección en Python (Secciones 8 y 9 del Prompt 07).
+    """Renderiza la sección administrativa `Productos` con protección en Python (Prompts 07 y 08).
 
     Cumple:
     - RF-011, RF-012 / CA-009: Presenta el formulario Login/Logout al acceder a Productos.
@@ -932,6 +1043,9 @@ def _renderizar_seccion_administrativa_productos() -> None:
       muestra la advertencia de que la administración es exclusiva para computadora.
     - CA-010, CA-011: Verifica credenciales con Argon2id y habilita únicamente la vista administrativa
       inicial (sin formularios de mantenimiento, que corresponden al Prompt 09).
+    - CA-030, CA-052..CA-057: Integra bloqueos progresivos (5, 10, 20 y 30 min), expiración a los
+      15 min de inactividad con revocación en servidor, advertencia previa 2 min antes (minuto 13),
+      botón «Continuar sesión» y avisos/acciones de retención y recuperación de borradores.
     """
     st.markdown(
         f"""
@@ -956,8 +1070,26 @@ def _renderizar_seccion_administrativa_productos() -> None:
             st.rerun()
         return
 
+    # Evaluación pasiva en servidor del estado temporal de la sesión (no actualiza actividad)
+    estado_tiempo = consultar_estado_sesion_admin(
+        st.session_state, contexto_dispositivo=contexto_dispositivo
+    )
+    if estado_tiempo.expirada:
+        aviso_actual = st.session_state.get(CLAVE_MENSAJE_AUTH_ADMIN)
+        codigo_aviso = (
+            str(aviso_actual.get("codigo", ""))
+            if isinstance(aviso_actual, Mapping)
+            else ""
+        )
+        if codigo_aviso != CodigoResultadoAutenticacion.SESION_EXPIRADA.value:
+            st.session_state[CLAVE_MENSAJE_AUTH_ADMIN] = {
+                "tipo": "warning",
+                "codigo": CodigoResultadoAutenticacion.SESION_EXPIRADA.value,
+                "mensaje": MENSAJE_SESION_EXPIRADA_INACTIVIDAD,
+            }
+
     # Validación efectiva en Python del estado autenticado de la sesión (Sección 8.3)
-    if not esta_autenticado_en_sesion(
+    if not estado_tiempo.autenticado or not esta_autenticado_en_sesion(
         st.session_state, contexto_dispositivo=contexto_dispositivo
     ):
         st.subheader(f"🔒 {TITULO_SECCION_ADMIN_LOGIN}")
@@ -976,7 +1108,24 @@ def _renderizar_seccion_administrativa_productos() -> None:
         if not verificacion_cfg.es_valida:
             st.warning(verificacion_cfg.mensaje_usuario)
 
+        estado_bloqueo = consultar_estado_bloqueo_admin()
+        aviso_pendiente = st.session_state.get(CLAVE_MENSAJE_AUTH_ADMIN)
+        codigo_pendiente = (
+            str(aviso_pendiente.get("codigo", ""))
+            if isinstance(aviso_pendiente, Mapping)
+            else ""
+        )
+        if (
+            estado_bloqueo.esta_bloqueado
+            and codigo_pendiente
+            != CodigoResultadoAutenticacion.CUENTA_BLOQUEADA_TEMPORALMENTE.value
+        ):
+            st.error(estado_bloqueo.mensaje_usuario)
+
         _mostrar_retroalimentacion_auth_pendiente()
+
+        if estado_tiempo.tiene_borrador_retenido:
+            st.info(f"📝 {MENSAJE_BORRADOR_RETENIDO_REAUTENTICACION}")
 
         with st.container(border=True):
             usuario_input = st.text_input(
@@ -1037,6 +1186,10 @@ def _renderizar_seccion_administrativa_productos() -> None:
     st.subheader(f"📦 {TITULO_SECCION_PRODUCTOS_ADMIN}")
     _mostrar_retroalimentacion_auth_pendiente()
 
+    # Advertencia previa a los 13 minutos de inactividad (2 minutos antes de expirar — CA-054)
+    if estado_tiempo.en_ventana_advertencia and estado_tiempo.mensaje_advertencia:
+        st.warning(f"⏳ {estado_tiempo.mensaje_advertencia}")
+
     usuario_presentacion_segura = formatear_nombre_usuario_admin_seguro(
         sesion_admin.usuario
     )
@@ -1054,8 +1207,25 @@ def _renderizar_seccion_administrativa_productos() -> None:
     st.caption(
         f"👤 Cuenta administrativa autenticada: {usuario_presentacion_segura}"
     )
+    minutos_rest_aprox = max(1, int(math.ceil(estado_tiempo.segundos_restantes / 60.0)))
+    st.caption(
+        f"⏱️ Estado de sesión: Activa · Tiempo restante antes de expirar por inactividad: "
+        f"~{minutos_rest_aprox} min ({int(math.ceil(estado_tiempo.segundos_restantes))} s)."
+    )
 
-    col_logout, col_volver_pub = st.columns(2)
+    col_continuar, col_logout, col_volver_pub = st.columns(3)
+    with col_continuar:
+        if st.button(
+            TEXTO_BOTON_CONTINUAR_SESION,
+            key="btn_admin_continuar_sesion",
+            type="primary" if estado_tiempo.en_ventana_advertencia else "secondary",
+            use_container_width=True,
+        ):
+            ejecutar_renovacion_sesion_en_sesion(
+                st.session_state,
+                contexto_dispositivo=contexto_dispositivo,
+            )
+            st.rerun()
     with col_logout:
         if st.button(
             TEXTO_BOTON_LOGOUT_ADMIN,
@@ -1072,6 +1242,34 @@ def _renderizar_seccion_administrativa_productos() -> None:
         ):
             seleccionar_seccion_interfaz(SeccionInterfaz.INICIO)
             st.rerun()
+
+    # Si existe un borrador temporal disponible tras reautenticación, permitir restaurarlo o descartarlo
+    if estado_tiempo.tiene_borrador_retenido:
+        with st.container(border=True):
+            st.info(
+                "📝 Existe un borrador administrativo temporal asociado a tu sesión "
+                "(no confirmado todavía en GitHub)."
+            )
+            col_rest, col_desc = st.columns(2)
+            with col_rest:
+                if st.button(
+                    TEXTO_BOTON_RESTAURAR_BORRADOR,
+                    key="btn_admin_restaurar_borrador",
+                    use_container_width=True,
+                ):
+                    ejecutar_restauracion_borrador_en_sesion(
+                        st.session_state,
+                        contexto_dispositivo=contexto_dispositivo,
+                    )
+                    st.rerun()
+            with col_desc:
+                if st.button(
+                    TEXTO_BOTON_DESCARTAR_BORRADOR,
+                    key="btn_admin_descartar_borrador",
+                    use_container_width=True,
+                ):
+                    ejecutar_descarte_borrador_en_sesion(st.session_state)
+                    st.rerun()
 
     with st.container(border=True):
         st.info(f"ℹ️ {MENSAJE_MANTENIMIENTO_PENDIENTE_P09}")
