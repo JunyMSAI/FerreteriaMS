@@ -2815,15 +2815,6 @@ def renderizar_aplicacion(
     },
     )
 
-    # Ocultar controles superiores de Streamlit
-    st.markdown("""
-    <style>
-        #MainMenu {visibility: hidden;}
-        [data-testid="stToolbar"] {display: none;}
-        [data-testid="stDecoration"] {display: none;}   
-    </style>
-    """, unsafe_allow_html=True)
-
     _aplicar_estilos_locales()
     inicializar_estado_sesion()
 
