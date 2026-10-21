@@ -2815,12 +2815,24 @@ def renderizar_aplicacion(
     },
     )
 
-    # Ocultar controles superiores de Streamlit
+        # Ocultar controles superiores y enlace flotante de GitHub
     st.markdown("""
     <style>
-        #MainMenu {visibility: hidden;}
-        [data-testid="stToolbar"] {display: none;}
-        [data-testid="stDecoration"] {display: none;}
+        #MainMenu {
+            visibility: hidden;
+        }
+
+        [data-testid="stToolbar"],
+        [data-testid="stDecoration"] {
+            display: none !important;
+        }
+
+        /* Ocultar Viewer Badge de Streamlit Community Cloud */
+        #GithubIcon,
+        [class*="viewerBadge"],
+        [class*="ViewerBadge"] {
+            display: none !important;
+        }
     </style>
     """, unsafe_allow_html=True)
 
