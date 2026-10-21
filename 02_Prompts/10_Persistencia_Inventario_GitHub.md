@@ -2,8 +2,6 @@
 
 **Proyecto:** FerreteríaMS v0  
 **Nivel:** Auditoría reforzada — persistencia, seguridad y concurrencia  
-**Agente ejecutor:** Antigravity (Gemini), integrado en VS Code  
-**Rama esperada:** `main`  
 **Último commit funcional aprobado:** `97f91ce` — FERMS-V0-P09  
 
 ---

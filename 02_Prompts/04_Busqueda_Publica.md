@@ -2,11 +2,7 @@
 
 **Proyecto:** FerreteríaMS v0  
 **Identificador:** `FERMS-V0-P04`  
-**Etapa:** Desarrollo de la búsqueda pública  
-**Agente:** Antigravity dentro de VS Code  
-**Repositorio:** `JunyMSAI/FerreteriaMS`  
-**Rama de referencia:** `main`  
-**Directorio local:** `C:\Projects\FerreteriaMS`  
+**Etapa:** Desarrollo de la búsqueda pública    
 **Archivo del prompt:** `02_Prompts/04_Busqueda_Publica.md`  
 
 ---

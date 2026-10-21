@@ -2,11 +2,7 @@
 
 **Proyecto:** FerreteríaMS v0  
 **TASK_ID:** `FERMS-V0-P06`  
-**Etapa:** Diseño e integración visual de la interfaz pública  
-**Agente:** Antigravity dentro de VS Code  
-**Repositorio:** `JunyMSAI/FerreteriaMS`  
-**Rama:** `main`  
-**Directorio:** `C:\Projects\FerreteriaMS`  
+**Etapa:** Diseño e integración visual de la interfaz pública   
 **Archivo:** `02_Prompts/06_Interfaz_Responsive_Gemini.md`  
 
 ---

@@ -2,11 +2,7 @@
 
 **Proyecto:** FerreteríaMS v0  
 **TASK_ID:** `FERMS-V0-P07`  
-**Etapa:** Acceso administrativo seguro  
-**Agente:** Antigravity dentro de VS Code  
-**Repositorio:** `JunyMSAI/FerreteriaMS`  
-**Rama:** `main`  
-**Directorio:** `C:\Projects\FerreteriaMS`  
+**Etapa:** Acceso administrativo seguro   
 **Archivo:** `02_Prompts/07_Autenticacion_Administrativa.md`  
 
 ---

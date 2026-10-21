@@ -2,11 +2,7 @@
 
 **Proyecto:** FerreteríaMS v0  
 **Identificador:** `FERMS-V0-P03`  
-**Etapa:** Integración de lectura del inventario remoto  
-**Agente:** Antigravity en VS Code  
-**Repositorio:** `JunyMSAI/FerreteriaMS`  
-**Rama:** `main`  
-**Directorio local:** `C:\Projects\FerreteriaMS`  
+**Etapa:** Integración de lectura del inventario remoto   
 **Archivo del prompt:** `02_Prompts/03_Lectura_GitHub.md`  
 
 ---

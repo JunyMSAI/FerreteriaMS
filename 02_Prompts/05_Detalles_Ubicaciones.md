@@ -2,11 +2,7 @@
 
 **Proyecto:** FerreteríaMS v0  
 **TASK_ID:** FERMS-V0-P05  
-**Etapa:** Consulta pública de detalles y ubicaciones  
-**Agente:** Antigravity dentro de VS Code  
-**Repositorio:** `JunyMSAI/FerreteriaMS`  
-**Rama de referencia:** `main`  
-**Directorio local:** `C:\Projects\FerreteriaMS`  
+**Etapa:** Consulta pública de detalles y ubicaciones    
 **Archivo del prompt:** `02_Prompts/05_Detalles_Ubicaciones.md`  
 
 ---

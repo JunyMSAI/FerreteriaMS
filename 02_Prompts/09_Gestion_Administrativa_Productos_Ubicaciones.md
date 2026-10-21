@@ -2,9 +2,8 @@
 
 **Proyecto:** FerreteríaMS v0  
 **Nivel:** Estándar con auditoría reforzada de integridad y seguridad  
-**Agente ejecutor:** Antigravity (Gemini) dentro de VS Code  
 **Commit base esperado:** `6cdda82`  
-**Rama esperada:** `main`
+
 
 ## 1. Objetivo
 

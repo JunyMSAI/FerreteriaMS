@@ -3,10 +3,6 @@
 **Proyecto:** FerreteríaMS v0  
 **TASK_ID:** `FERMS-V0-P08`  
 **Etapa:** Seguridad administrativa avanzada  
-**Agente:** Antigravity dentro de VS Code  
-**Repositorio:** `JunyMSAI/FerreteriaMS`  
-**Rama:** `main`  
-**Directorio local:** `C:\Projects\FerreteriaMS`  
 **Archivo:** `02_Prompts/08_Sesiones_Bloqueos_Borradores.md` 
 
 ---
