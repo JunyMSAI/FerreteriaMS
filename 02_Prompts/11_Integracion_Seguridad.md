@@ -1,7 +1,6 @@
 # FERMS-V0-P11 — Integración y seguridad para entrega urgente
 
-**Proyecto:** FerreteríaMS v0  
-**Commit base:** `ae1d44b` — Prompt 10 completado  
+**Proyecto:** FerreteríaMS v0   
 **Prioridad:** ALTA — Entrega próxima  
 **Modalidad:** Verificación rápida, sin refactorizaciones innecesarias.
 

@@ -2,7 +2,6 @@
 
 **Proyecto:** FerreteríaMS v0  
 **Nivel:** Estándar con auditoría reforzada de integridad y seguridad  
-**Commit base esperado:** `6cdda82`  
 
 
 ## 1. Objetivo

@@ -1,8 +1,7 @@
 # FERMS-V0-P10 — Persistencia segura del inventario mediante GitHub API
 
 **Proyecto:** FerreteríaMS v0  
-**Nivel:** Auditoría reforzada — persistencia, seguridad y concurrencia  
-**Último commit funcional aprobado:** `97f91ce` — FERMS-V0-P09  
+**Nivel:** Auditoría reforzada — persistencia, seguridad y concurrencia 
 
 ---
 
