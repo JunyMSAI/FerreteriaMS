@@ -7,7 +7,7 @@
 **TASK_DATE:** Completar al iniciar la ejecución (hora local del responsable)  
 **TASK_TIME:** Completar al iniciar la ejecución (hora local del responsable)  
 **Estado:** DOCUMENTO PROPUESTO — requiere aprobación y commit antes de ejecutarse  
-**Responsable de ejecución:** Antigravity / Gemini
+
 
 ## 1. Objetivo y punto de partida
 
