@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, BinaryIO, Mapping
+import unicodedata
 from zipfile import BadZipFile
 
 import openpyxl
@@ -22,6 +23,7 @@ from openpyxl.utils.exceptions import InvalidFileException
 import pandas as pd
 
 # Nombres exactos de hojas y columnas aprobados en 02_Especificaciones_v0.md (Sección 3.3)
+# y extendidos en 03_Especificaciones_Final.md (Sección 3.4 — campo lógico Activo en Ubicaciones para P14)
 HOJA_PRODUCTOS = "Productos"
 HOJA_CATEGORIAS = "Categorías"
 HOJA_UBICACIONES = "Ubicaciones"
@@ -30,8 +32,12 @@ HOJA_ASIGNACIONES = "Asignaciones"
 ESQUEMA_HOJAS: dict[str, list[str]] = {
     HOJA_PRODUCTOS: ["Codigo_Producto", "Nombre", "Categoria_ID", "Descripcion"],
     HOJA_CATEGORIAS: ["Categoria_ID", "Nombre_Categoria"],
-    HOJA_UBICACIONES: ["Ubicacion_ID", "Rack", "Columna", "Nivel", "Posicion"],
+    HOJA_UBICACIONES: ["Ubicacion_ID", "Rack", "Columna", "Nivel", "Posicion", "Activo"],
     HOJA_ASIGNACIONES: ["Codigo_Producto", "Ubicacion_ID", "Principal"],
+}
+
+COLUMNAS_OPCIONALES_RETROCOMPATIBLES: dict[str, frozenset[str]] = {
+    HOJA_UBICACIONES: frozenset({"Activo"}),
 }
 
 ORDEN_HOJAS: tuple[str, ...] = (
@@ -43,6 +49,9 @@ ORDEN_HOJAS: tuple[str, ...] = (
 
 VALORES_PRINCIPAL_SI: frozenset[str] = frozenset({"sí", "si"})
 VALORES_PRINCIPAL_NO: frozenset[str] = frozenset({"no"})
+
+VALORES_ACTIVO_SI: frozenset[str] = frozenset({"sí", "si", "true", "1", "activo", "activa"})
+VALORES_ACTIVO_NO: frozenset[str] = frozenset({"no", "false", "0", "inactivo", "inactiva"})
 
 MARCA_DEMOSTRATIVA = "[DEMOSTRATIVO]"
 
@@ -58,8 +67,10 @@ class CodigoErrorInventario(str, Enum):
     COLUMNA_NO_AUTORIZADA = "COLUMNA_NO_AUTORIZADA"
     VALOR_OBLIGATORIO_AUSENTE = "VALOR_OBLIGATORIO_AUSENTE"
     IDENTIFICADOR_DUPLICADO = "IDENTIFICADOR_DUPLICADO"
+    NOMBRE_CATEGORIA_DUPLICADO = "NOMBRE_CATEGORIA_DUPLICADO"
     CATEGORIA_INEXISTENTE = "CATEGORIA_INEXISTENTE"
     UBICACION_INEXISTENTE = "UBICACION_INEXISTENTE"
+    UBICACION_INACTIVA_ASIGNADA = "UBICACION_INACTIVA_ASIGNADA"
     PRODUCTO_INEXISTENTE = "PRODUCTO_INEXISTENTE"
     UBICACION_FISICA_DUPLICADA = "UBICACION_FISICA_DUPLICADA"
     ASIGNACION_DUPLICADA = "ASIGNACION_DUPLICADA"
@@ -67,6 +78,7 @@ class CodigoErrorInventario(str, Enum):
     UBICACION_PRINCIPAL_MULTIPLE = "UBICACION_PRINCIPAL_MULTIPLE"
     SIN_UBICACION_PRINCIPAL = "SIN_UBICACION_PRINCIPAL"
     VALOR_PRINCIPAL_INVALIDO = "VALOR_PRINCIPAL_INVALIDO"
+    VALOR_ACTIVO_INVALIDO = "VALOR_ACTIVO_INVALIDO"
     PROTECCION_INVENTARIO_EXISTENTE = "PROTECCION_INVENTARIO_EXISTENTE"
     ESTADO_REMOTO_DESCONOCIDO = "ESTADO_REMOTO_DESCONOCIDO"
 
@@ -214,6 +226,24 @@ class ErrorValorPrincipalInvalido(ErrorValidacionInventario):
     codigo_por_defecto = CodigoErrorInventario.VALOR_PRINCIPAL_INVALIDO
 
 
+class ErrorNombreCategoriaDuplicado(ErrorValidacionInventario):
+    """Dos categorías tienen el mismo nombre normalizado."""
+
+    codigo_por_defecto = CodigoErrorInventario.NOMBRE_CATEGORIA_DUPLICADO
+
+
+class ErrorUbicacionInactivaAsignada(ErrorValidacionInventario):
+    """Una asignación referencia una ubicación que se encuentra desactivada."""
+
+    codigo_por_defecto = CodigoErrorInventario.UBICACION_INACTIVA_ASIGNADA
+
+
+class ErrorValorActivoInvalido(ErrorValidacionInventario):
+    """El campo Activo contiene un valor ambiguo o distinto de Sí/No."""
+
+    codigo_por_defecto = CodigoErrorInventario.VALOR_ACTIVO_INVALIDO
+
+
 class ErrorProteccionInventario(ErrorInventario):
     """Operación bloqueada para proteger un inventario existente o ante estado incierto."""
 
@@ -229,8 +259,10 @@ MAPA_EXCEPCIONES: dict[CodigoErrorInventario, type[ErrorInventario]] = {
     CodigoErrorInventario.COLUMNA_NO_AUTORIZADA: ErrorColumnaFaltante,
     CodigoErrorInventario.VALOR_OBLIGATORIO_AUSENTE: ErrorValorObligatorio,
     CodigoErrorInventario.IDENTIFICADOR_DUPLICADO: ErrorIdentificadorDuplicado,
+    CodigoErrorInventario.NOMBRE_CATEGORIA_DUPLICADO: ErrorNombreCategoriaDuplicado,
     CodigoErrorInventario.CATEGORIA_INEXISTENTE: ErrorCategoriaInexistente,
     CodigoErrorInventario.UBICACION_INEXISTENTE: ErrorUbicacionInexistente,
+    CodigoErrorInventario.UBICACION_INACTIVA_ASIGNADA: ErrorUbicacionInactivaAsignada,
     CodigoErrorInventario.PRODUCTO_INEXISTENTE: ErrorProductoInexistente,
     CodigoErrorInventario.UBICACION_FISICA_DUPLICADA: ErrorUbicacionFisicaDuplicada,
     CodigoErrorInventario.ASIGNACION_DUPLICADA: ErrorAsignacionDuplicada,
@@ -238,6 +270,7 @@ MAPA_EXCEPCIONES: dict[CodigoErrorInventario, type[ErrorInventario]] = {
     CodigoErrorInventario.UBICACION_PRINCIPAL_MULTIPLE: ErrorUbicacionPrincipalMultiple,
     CodigoErrorInventario.SIN_UBICACION_PRINCIPAL: ErrorSinUbicacionPrincipal,
     CodigoErrorInventario.VALOR_PRINCIPAL_INVALIDO: ErrorValorPrincipalInvalido,
+    CodigoErrorInventario.VALOR_ACTIVO_INVALIDO: ErrorValorActivoInvalido,
     CodigoErrorInventario.PROTECCION_INVENTARIO_EXISTENTE: ErrorProteccionInventario,
     CodigoErrorInventario.ESTADO_REMOTO_DESCONOCIDO: ErrorProteccionInventario,
 }
@@ -293,6 +326,16 @@ def _limpiar_texto(valor: Any) -> str:
     return str(valor).strip()
 
 
+def normalizar_texto_comparacion_catalogo(valor: Any) -> str:
+    """Normaliza un texto para comparación de unicidad (sin acentos, minúsculas y espacios simples)."""
+    texto = " ".join(_limpiar_texto(valor).split())
+    if not texto:
+        return ""
+    descompuesto = unicodedata.normalize("NFD", texto)
+    sin_acentos = "".join(c for c in descompuesto if unicodedata.category(c) != "Mn")
+    return unicodedata.normalize("NFC", sin_acentos).casefold()
+
+
 def normalizar_valor_principal(valor: Any) -> str:
     """Normaliza el campo Principal a 'Sí' o 'No'.
 
@@ -310,12 +353,36 @@ def normalizar_valor_principal(valor: Any) -> str:
     )
 
 
+def normalizar_valor_activo(valor: Any, *, permitir_vacio_retrocompatible: bool = True) -> str:
+    """Normaliza el campo lógico Activo a 'Sí' o 'No'.
+
+    Por compatibilidad retroactiva con archivos v0 (CA-F-009), un valor ausente o vacío
+    se interpreta como activo ('Sí') cuando `permitir_vacio_retrocompatible=True`.
+    """
+    texto = _limpiar_texto(valor)
+    if not texto and permitir_vacio_retrocompatible:
+        return "Sí"
+    texto_min = texto.lower()
+    if texto_min in VALORES_ACTIVO_SI:
+        return "Sí"
+    if texto_min in VALORES_ACTIVO_NO:
+        return "No"
+    raise ErrorValorActivoInvalido(
+        f"Valor inválido para el campo 'Activo': {texto!r}. Solo se admiten 'Sí' o 'No'.",
+        codigo=CodigoErrorInventario.VALOR_ACTIVO_INVALIDO,
+    )
+
+
 def _normalizar_dataframe_texto(df: pd.DataFrame, columnas_esperadas: list[str]) -> pd.DataFrame:
     """Normaliza un DataFrame conservando todas las celdas como cadenas de texto limpias."""
     copia = df.copy()
     for col in columnas_esperadas:
         if col in copia.columns:
             copia[col] = copia[col].map(_limpiar_texto).astype(str)
+            if col == "Activo":
+                copia[col] = copia[col].map(lambda v: "Sí" if not v else v).astype(str)
+        elif col == "Activo":
+            copia[col] = "Sí"
     return copia[columnas_esperadas].reset_index(drop=True)
 
 
@@ -384,7 +451,11 @@ def validar_estructura_hojas(
             continue
 
         columnas_actuales = [str(c) for c in df.columns]
-        faltantes = [c for c in columnas_requeridas if c not in columnas_actuales]
+        columnas_opcionales = COLUMNAS_OPCIONALES_RETROCOMPATIBLES.get(nombre_hoja, frozenset())
+        faltantes = [
+            c for c in columnas_requeridas
+            if c not in columnas_actuales and c not in columnas_opcionales
+        ]
         if faltantes:
             errores.append(
                 DetalleErrorInventario(
@@ -444,6 +515,7 @@ def validar_inventario(
 
     # 1. Validación de Categorías
     categorias_vistas: set[str] = set()
+    nombres_categorias_vistos: set[str] = set()
     for idx, fila in df_categorias.iterrows():
         num_fila = int(idx) + 2
         cat_id = fila["Categoria_ID"]
@@ -483,9 +555,28 @@ def validar_inventario(
                     campo="Nombre_Categoria",
                 )
             )
+        else:
+            clave_nombre_cat = normalizar_texto_comparacion_catalogo(nombre_cat)
+            if clave_nombre_cat in nombres_categorias_vistos:
+                errores.append(
+                    DetalleErrorInventario(
+                        codigo=CodigoErrorInventario.NOMBRE_CATEGORIA_DUPLICADO,
+                        mensaje=(
+                            f"Fila {num_fila} en '{HOJA_CATEGORIAS}': "
+                            f"'Nombre_Categoria' duplicado ('{nombre_cat}')."
+                        ),
+                        hoja=HOJA_CATEGORIAS,
+                        fila=num_fila,
+                        campo="Nombre_Categoria",
+                        valor=nombre_cat,
+                    )
+                )
+            else:
+                nombres_categorias_vistos.add(clave_nombre_cat)
 
     # 2. Validación de Ubicaciones
     ubicaciones_vistas: set[str] = set()
+    ubicaciones_inactivas: set[str] = set()
     combinaciones_fisicas_vistas: set[tuple[str, str, str, str]] = set()
     for idx, fila in df_ubicaciones.iterrows():
         num_fila = int(idx) + 2
@@ -494,6 +585,7 @@ def validar_inventario(
         columna = fila["Columna"]
         nivel = fila["Nivel"]
         posicion = fila["Posicion"]
+        val_activo = fila.get("Activo", "Sí")
 
         if not ubic_id:
             errores.append(
@@ -519,6 +611,25 @@ def validar_inventario(
         else:
             ubicaciones_vistas.add(ubic_id)
 
+        try:
+            activo_norm = normalizar_valor_activo(val_activo, permitir_vacio_retrocompatible=True)
+            if activo_norm == "No" and ubic_id:
+                ubicaciones_inactivas.add(ubic_id)
+        except ErrorValorActivoInvalido:
+            errores.append(
+                DetalleErrorInventario(
+                    codigo=CodigoErrorInventario.VALOR_ACTIVO_INVALIDO,
+                    mensaje=(
+                        f"Fila {num_fila} en '{HOJA_UBICACIONES}': valor inválido '{val_activo}' "
+                        f"en 'Activo'. Solo se admiten los estados lógicos 'Sí' y 'No'."
+                    ),
+                    hoja=HOJA_UBICACIONES,
+                    fila=num_fila,
+                    campo="Activo",
+                    valor=str(val_activo),
+                )
+            )
+
         campos_fisicos = {"Rack": rack, "Columna": columna, "Nivel": nivel, "Posicion": posicion}
         faltan_fisicos = False
         for nombre_campo, valor_campo in campos_fisicos.items():
@@ -538,7 +649,12 @@ def validar_inventario(
                 )
 
         if not faltan_fisicos:
-            clave_fisica = (rack, columna, nivel, posicion)
+            clave_fisica = (
+                normalizar_texto_comparacion_catalogo(rack),
+                normalizar_texto_comparacion_catalogo(columna),
+                normalizar_texto_comparacion_catalogo(nivel),
+                normalizar_texto_comparacion_catalogo(posicion),
+            )
             if clave_fisica in combinaciones_fisicas_vistas:
                 etiqueta = f"{rack}-{columna}-{nivel}-{posicion}"
                 errores.append(
@@ -692,6 +808,20 @@ def validar_inventario(
                     valor=ubic_id,
                 )
             )
+        elif ubic_id in ubicaciones_inactivas:
+            errores.append(
+                DetalleErrorInventario(
+                    codigo=CodigoErrorInventario.UBICACION_INACTIVA_ASIGNADA,
+                    mensaje=(
+                        f"Fila {num_fila} en '{HOJA_ASIGNACIONES}': la ubicación '{ubic_id}' "
+                        f"se encuentra inactiva y no puede estar asignada al producto '{cod_prod}'."
+                    ),
+                    hoja=HOJA_ASIGNACIONES,
+                    fila=num_fila,
+                    campo="Ubicacion_ID",
+                    valor=ubic_id,
+                )
+            )
         else:
             ubic_valida = True
 
@@ -809,6 +939,7 @@ def construir_inventario_datos(hojas: Mapping[str, pd.DataFrame]) -> InventarioD
     df_ubicaciones = _normalizar_dataframe_texto(
         hojas[HOJA_UBICACIONES], ESQUEMA_HOJAS[HOJA_UBICACIONES]
     )
+    df_ubicaciones["Activo"] = df_ubicaciones["Activo"].map(normalizar_valor_activo)
     df_asignaciones = _normalizar_dataframe_texto(
         hojas[HOJA_ASIGNACIONES], ESQUEMA_HOJAS[HOJA_ASIGNACIONES]
     )

@@ -84,6 +84,8 @@ from inventario import (  # noqa: E402
     construir_inventario_datos,
     crear_inventario_demostrativo,
     formatear_ubicacion_fisica,
+    normalizar_texto_comparacion_catalogo,
+    normalizar_valor_activo,
     normalizar_valor_principal,
     obtener_producto_por_codigo,
     obtener_productos_estructurados,
@@ -95,16 +97,22 @@ CLAVE_ESPACIO_TRABAJO_ADMIN: str = "ferms_espacio_trabajo_admin"
 CLAVE_RESULTADO_CARGA_ADMIN: str = "ferms_resultado_carga_admin"
 CLAVE_MODO_VISTA_ADMIN: str = "ferms_modo_vista_admin"
 CLAVE_PRODUCTO_ADMIN_SELECCIONADO: str = "ferms_producto_admin_seleccionado"
+CLAVE_CATEGORIA_ADMIN_SELECCIONADA: str = "ferms_categoria_admin_seleccionada"
+CLAVE_UBICACION_ADMIN_SELECCIONADA: str = "ferms_ubicacion_admin_seleccionada"
 CLAVE_TERMINO_FILTRO_ADMIN: str = "ferms_termino_filtro_admin"
 CLAVE_MENSAJE_OPERACION_ADMIN: str = "ferms_mensaje_operacion_admin"
 CLAVE_FORMULARIO_BORRADOR_ADMIN: str = "ferms_formulario_borrador_admin"
 
-# Límites de validación para los campos de texto de productos
+# Límites de validación para los campos de texto de productos y catálogos
 LONGITUD_MAXIMA_CODIGO_PRODUCTO: int = 64
 LONGITUD_MAXIMA_NOMBRE_PRODUCTO: int = 200
 LONGITUD_MAXIMA_DESCRIPCION_PRODUCTO: int = 2000
+LONGITUD_MAXIMA_CATEGORIA_ID: int = 64
+LONGITUD_MAXIMA_NOMBRE_CATEGORIA: int = 200
+LONGITUD_MAXIMA_UBICACION_ID: int = 64
+LONGITUD_MAXIMA_CAMPO_FISICO_UBICACION: int = 64
 
-# Textos y avisos claros diferenciados (Sección 10 del Prompt 09)
+# Textos y avisos claros diferenciados (Sección 10 del Prompt 09 y Prompt 14)
 MENSAJE_INVENTARIO_DISPONIBLE_EDICION_LOCAL: str = (
     "Inventario cargado en memoria de trabajo. Las creaciones y ediciones se validan "
     "localmente y permanecen pendientes de guardar en GitHub (Prompt 10)."
@@ -138,6 +146,26 @@ MENSAJE_ELIMINACION_SECUNDARIA_LOCAL_EXITOSA: str = (
     "Ubicación secundaria retirada en la copia temporal de trabajo (cambio local "
     "pendiente de guardar; aún no persistido en GitHub)."
 )
+MENSAJE_CREACION_CATEGORIA_LOCAL_EXITOSA: str = (
+    "Categoría validada y registrada en la copia temporal de trabajo (cambio local "
+    "pendiente de guardar; aún no persistido en GitHub)."
+)
+MENSAJE_EDICION_CATEGORIA_LOCAL_EXITOSA: str = (
+    "Nombre de categoría actualizado en la copia temporal de trabajo (cambio local "
+    "pendiente de guardar; aún no persistido en GitHub)."
+)
+MENSAJE_CREACION_UBICACION_LOCAL_EXITOSA: str = (
+    "Ubicación física validada y registrada en la copia temporal de trabajo (cambio local "
+    "pendiente de guardar; aún no persistido en GitHub)."
+)
+MENSAJE_EDICION_UBICACION_LOCAL_EXITOSA: str = (
+    "Ubicación física actualizada en la copia temporal de trabajo (cambio local "
+    "pendiente de guardar; aún no persistido en GitHub)."
+)
+MENSAJE_DESACTIVACION_UBICACION_LOCAL_EXITOSA: str = (
+    "Ubicación física desactivada en la copia temporal de trabajo (cambio local "
+    "pendiente de guardar; aún no persistido en GitHub)."
+)
 MENSAJE_CAMBIOS_LOCALES_DESCARTADOS: str = (
     "Se descartaron las modificaciones locales no guardadas y se restauró la copia "
     "base original del inventario en memoria."
@@ -150,12 +178,14 @@ MENSAJE_CATALOGO_PREDEFINIDO_NO_EDITABLE: str = (
 
 
 class ModoVistaAdmin(str, Enum):
-    """Subvistas del panel administrativo de Productos."""
+    """Subvistas del panel administrativo de Productos, Categorías y Ubicaciones."""
 
     INICIAL = "INICIAL"
     CONSULTA = "CONSULTA"
     CREAR_PRODUCTO = "CREAR_PRODUCTO"
     EDITAR_PRODUCTO = "EDITAR_PRODUCTO"
+    CATEGORIAS = "CATEGORIAS"
+    UBICACIONES = "UBICACIONES"
 
 
 class EstadoInventarioAdmin(str, Enum):
@@ -174,7 +204,7 @@ class EstadoInventarioAdmin(str, Enum):
 
 
 class CodigoErrorAdministrativo(str, Enum):
-    """Códigos estructurados para los rechazos de validación y seguridad del Prompt 09."""
+    """Códigos estructurados para los rechazos de validación y seguridad del Prompt 09 y Prompt 14."""
 
     AUTORIZACION_INVALIDA = "AUTORIZACION_INVALIDA"
     SESION_EXPIRADA = "SESION_EXPIRADA"
@@ -191,7 +221,24 @@ class CodigoErrorAdministrativo(str, Enum):
     DESCRIPCION_PRODUCTO_INVALIDA = "DESCRIPCION_PRODUCTO_INVALIDA"
     CATEGORIA_OBLIGATORIA = "CATEGORIA_OBLIGATORIA"
     CATEGORIA_INEXISTENTE = "CATEGORIA_INEXISTENTE"
+    CATEGORIA_ID_OBLIGATORIO = "CATEGORIA_ID_OBLIGATORIO"
+    CATEGORIA_ID_INVALIDO = "CATEGORIA_ID_INVALIDO"
+    CATEGORIA_ID_DUPLICADO = "CATEGORIA_ID_DUPLICADO"
+    CATEGORIA_ID_INMUTABLE = "CATEGORIA_ID_INMUTABLE"
+    NOMBRE_CATEGORIA_OBLIGATORIO = "NOMBRE_CATEGORIA_OBLIGATORIO"
+    NOMBRE_CATEGORIA_INVALIDO = "NOMBRE_CATEGORIA_INVALIDO"
+    NOMBRE_CATEGORIA_DUPLICADO = "NOMBRE_CATEGORIA_DUPLICADO"
     UBICACION_INEXISTENTE = "UBICACION_INEXISTENTE"
+    UBICACION_ID_OBLIGATORIO = "UBICACION_ID_OBLIGATORIO"
+    UBICACION_ID_INVALIDO = "UBICACION_ID_INVALIDO"
+    UBICACION_ID_DUPLICADO = "UBICACION_ID_DUPLICADO"
+    UBICACION_ID_INMUTABLE = "UBICACION_ID_INMUTABLE"
+    CAMPOS_FISICOS_UBICACION_OBLIGATORIOS = "CAMPOS_FISICOS_UBICACION_OBLIGATORIOS"
+    CAMPOS_FISICOS_UBICACION_INVALIDOS = "CAMPOS_FISICOS_UBICACION_INVALIDOS"
+    UBICACION_FISICA_DUPLICADA = "UBICACION_FISICA_DUPLICADA"
+    UBICACION_CON_PRODUCTOS_ASOCIADOS = "UBICACION_CON_PRODUCTOS_ASOCIADOS"
+    UBICACION_INACTIVA = "UBICACION_INACTIVA"
+    UBICACION_YA_INACTIVA = "UBICACION_YA_INACTIVA"
     PRODUCTO_SIN_UBICACION = "PRODUCTO_SIN_UBICACION"
     SIN_UBICACION_PRINCIPAL = "SIN_UBICACION_PRINCIPAL"
     UBICACION_PRINCIPAL_MULTIPLE = "UBICACION_PRINCIPAL_MULTIPLE"
@@ -274,10 +321,11 @@ class OperacionLocalInventario:
     descripcion: str
     asignaciones: tuple[dict[str, str], ...]
     realizada_en_epoch: float
+    detalles_operacion: dict[str, Any] = field(default_factory=dict)
 
     def a_diccionario_serializable(self) -> dict[str, Any]:
         """Convierte la operación a un diccionario seguro apto para borradores temporales."""
-        return {
+        datos = {
             "tipo_operacion": self.tipo_operacion,
             "codigo_producto": self.codigo_producto,
             "nombre": self.nombre,
@@ -286,6 +334,9 @@ class OperacionLocalInventario:
             "asignaciones": [dict(a) for a in self.asignaciones],
             "realizada_en_epoch": self.realizada_en_epoch,
         }
+        if self.detalles_operacion:
+            datos["detalles_operacion"] = dict(self.detalles_operacion)
+        return datos
 
 
 @dataclass
@@ -307,6 +358,11 @@ class EspacioTrabajoAdminInventario:
     origen_remoto_confirmado: bool = True
     codigos_productos_creados: tuple[str, ...] = ()
     codigos_productos_editados: tuple[str, ...] = ()
+    categorias_creadas: tuple[str, ...] = ()
+    categorias_editadas: tuple[str, ...] = ()
+    ubicaciones_creadas: tuple[str, ...] = ()
+    ubicaciones_editadas: tuple[str, ...] = ()
+    ubicaciones_desactivadas: tuple[str, ...] = ()
     historial_operaciones_locales: tuple[OperacionLocalInventario, ...] = ()
     creado_en_epoch: float = 0.0
     actualizado_en_epoch: float = 0.0
@@ -318,7 +374,15 @@ class EspacioTrabajoAdminInventario:
     @property
     def tiene_cambios_locales_pendientes(self) -> bool:
         """Indica si la copia de trabajo difiere del inventario original cargado."""
-        if self.codigos_productos_creados or self.codigos_productos_editados:
+        if (
+            self.codigos_productos_creados
+            or self.codigos_productos_editados
+            or self.categorias_creadas
+            or self.categorias_editadas
+            or self.ubicaciones_creadas
+            or self.ubicaciones_editadas
+            or self.ubicaciones_desactivadas
+        ):
             return True
         if self.historial_operaciones_locales:
             return True
@@ -330,6 +394,26 @@ class EspacioTrabajoAdminInventario:
     def total_productos_modificados_localmente(self) -> int:
         return len(
             set(self.codigos_productos_creados) | set(self.codigos_productos_editados)
+        )
+
+    @property
+    def total_categorias_modificadas_localmente(self) -> int:
+        return len(set(self.categorias_creadas) | set(self.categorias_editadas))
+
+    @property
+    def total_ubicaciones_modificadas_localmente(self) -> int:
+        return len(
+            set(self.ubicaciones_creadas)
+            | set(self.ubicaciones_editadas)
+            | set(self.ubicaciones_desactivadas)
+        )
+
+    @property
+    def total_registros_modificados_localmente(self) -> int:
+        return (
+            self.total_productos_modificados_localmente
+            + self.total_categorias_modificadas_localmente
+            + self.total_ubicaciones_modificadas_localmente
         )
 
     @property
@@ -368,6 +452,76 @@ class ResultadoOperacionProductoAdmin:
     tiene_cambios_pendientes: bool = False
     confirmado_en_github: bool = False
     es_cambio_local_temporal: bool = True
+
+
+@dataclass(frozen=True)
+class ResultadoOperacionCategoriaAdmin:
+    """Resultado estructurado de una operación local de creación o renombrado de categoría."""
+
+    exito: bool
+    estado: EstadoInventarioAdmin
+    mensaje_usuario: str
+    categoria_id: str = ""
+    codigo_error: CodigoErrorAdministrativo | None = None
+    categoria: dict[str, Any] | None = None
+    espacio_trabajo: EspacioTrabajoAdminInventario | None = None
+    sha_base_remoto: str | None = None
+    tiene_cambios_pendientes: bool = False
+    confirmado_en_github: bool = False
+    es_cambio_local_temporal: bool = True
+
+    @property
+    def nombre_categoria(self) -> str:
+        if isinstance(self.categoria, Mapping):
+            return str(self.categoria.get("nombre_categoria", ""))
+        return ""
+
+
+@dataclass(frozen=True)
+class ResultadoOperacionUbicacionAdmin:
+    """Resultado estructurado de una operación local de creación, edición o desactivación de ubicación."""
+
+    exito: bool
+    estado: EstadoInventarioAdmin
+    mensaje_usuario: str
+    ubicacion_id: str = ""
+    codigo_error: CodigoErrorAdministrativo | None = None
+    ubicacion: dict[str, Any] | None = None
+    espacio_trabajo: EspacioTrabajoAdminInventario | None = None
+    sha_base_remoto: str | None = None
+    tiene_cambios_pendientes: bool = False
+    confirmado_en_github: bool = False
+    es_cambio_local_temporal: bool = True
+
+    @property
+    def rack(self) -> str:
+        if isinstance(self.ubicacion, Mapping):
+            return str(self.ubicacion.get("rack", ""))
+        return ""
+
+    @property
+    def columna(self) -> str:
+        if isinstance(self.ubicacion, Mapping):
+            return str(self.ubicacion.get("columna", ""))
+        return ""
+
+    @property
+    def nivel(self) -> str:
+        if isinstance(self.ubicacion, Mapping):
+            return str(self.ubicacion.get("nivel", ""))
+        return ""
+
+    @property
+    def posicion(self) -> str:
+        if isinstance(self.ubicacion, Mapping):
+            return str(self.ubicacion.get("posicion", ""))
+        return ""
+
+    @property
+    def activo(self) -> str:
+        if isinstance(self.ubicacion, Mapping):
+            return str(self.ubicacion.get("activo_texto", ""))
+        return ""
 
 
 @dataclass(frozen=True)
@@ -470,8 +624,11 @@ def _convertir_error_motor_inventario(
     """Traduce una excepción de `inventario.py` a `ErrorValidacionAdministrativa` conservando su detalle."""
     mapa_codigos: dict[CodigoErrorInventario, CodigoErrorAdministrativo] = {
         CodigoErrorInventario.IDENTIFICADOR_DUPLICADO: CodigoErrorAdministrativo.CODIGO_PRODUCTO_DUPLICADO,
+        CodigoErrorInventario.NOMBRE_CATEGORIA_DUPLICADO: CodigoErrorAdministrativo.NOMBRE_CATEGORIA_DUPLICADO,
         CodigoErrorInventario.CATEGORIA_INEXISTENTE: CodigoErrorAdministrativo.CATEGORIA_INEXISTENTE,
         CodigoErrorInventario.UBICACION_INEXISTENTE: CodigoErrorAdministrativo.UBICACION_INEXISTENTE,
+        CodigoErrorInventario.UBICACION_INACTIVA_ASIGNADA: CodigoErrorAdministrativo.UBICACION_INACTIVA,
+        CodigoErrorInventario.UBICACION_FISICA_DUPLICADA: CodigoErrorAdministrativo.UBICACION_FISICA_DUPLICADA,
         CodigoErrorInventario.PRODUCTO_INEXISTENTE: CodigoErrorAdministrativo.PRODUCTO_NO_EXISTE,
         CodigoErrorInventario.PRODUCTO_SIN_ASIGNACION: CodigoErrorAdministrativo.PRODUCTO_SIN_UBICACION,
         CodigoErrorInventario.SIN_UBICACION_PRINCIPAL: CodigoErrorAdministrativo.SIN_UBICACION_PRINCIPAL,
@@ -688,6 +845,128 @@ def _validar_categoria_existente(
     return limpio
 
 
+def _validar_categoria_id_texto(categoria_id: Any) -> str:
+    """Valida que `Categoria_ID` sea texto obligatorio, sin caracteres de control y preserve ceros iniciales."""
+    if not isinstance(categoria_id, str):
+        raise ErrorValidacionAdministrativa(
+            "El identificador de categoría ('Categoria_ID') debe proporcionarse como texto.",
+            codigo=CodigoErrorAdministrativo.CATEGORIA_ID_OBLIGATORIO,
+        )
+    limpio = categoria_id.strip()
+    if not limpio:
+        raise ErrorValidacionAdministrativa(
+            "El campo 'Categoria_ID' es obligatorio y no puede estar vacío.",
+            codigo=CodigoErrorAdministrativo.CATEGORIA_ID_OBLIGATORIO,
+        )
+    if len(limpio) > LONGITUD_MAXIMA_CATEGORIA_ID:
+        raise ErrorValidacionAdministrativa(
+            f"El 'Categoria_ID' excede la longitud máxima permitida ({LONGITUD_MAXIMA_CATEGORIA_ID} caracteres).",
+            codigo=CodigoErrorAdministrativo.CATEGORIA_ID_INVALIDO,
+        )
+    if any(ord(c) < 32 or ord(c) == 127 for c in limpio):
+        raise ErrorValidacionAdministrativa(
+            "El 'Categoria_ID' contiene caracteres de control no permitidos.",
+            codigo=CodigoErrorAdministrativo.CATEGORIA_ID_INVALIDO,
+        )
+    return limpio
+
+
+def _validar_nombre_categoria_texto(nombre_categoria: Any) -> str:
+    """Valida que `Nombre_Categoria` sea texto obligatorio y sin caracteres de control."""
+    if not isinstance(nombre_categoria, str):
+        raise ErrorValidacionAdministrativa(
+            "El nombre de la categoría ('Nombre_Categoria') es obligatorio y debe ser un texto válido.",
+            codigo=CodigoErrorAdministrativo.NOMBRE_CATEGORIA_OBLIGATORIO,
+        )
+    limpio = " ".join(nombre_categoria.strip().split())
+    if not limpio:
+        raise ErrorValidacionAdministrativa(
+            "El campo 'Nombre_Categoria' es obligatorio y no puede estar vacío.",
+            codigo=CodigoErrorAdministrativo.NOMBRE_CATEGORIA_OBLIGATORIO,
+        )
+    if len(limpio) > LONGITUD_MAXIMA_NOMBRE_CATEGORIA:
+        raise ErrorValidacionAdministrativa(
+            f"El nombre de la categoría excede la longitud máxima permitida ({LONGITUD_MAXIMA_NOMBRE_CATEGORIA} caracteres).",
+            codigo=CodigoErrorAdministrativo.NOMBRE_CATEGORIA_INVALIDO,
+        )
+    if any(ord(c) < 32 or ord(c) == 127 for c in limpio):
+        raise ErrorValidacionAdministrativa(
+            "El nombre de la categoría contiene caracteres de control no permitidos.",
+            codigo=CodigoErrorAdministrativo.NOMBRE_CATEGORIA_INVALIDO,
+        )
+    return limpio
+
+
+def _validar_ubicacion_id_texto(ubicacion_id: Any) -> str:
+    """Valida que `Ubicacion_ID` sea texto obligatorio, sin caracteres de control y preserve ceros iniciales."""
+    if not isinstance(ubicacion_id, str):
+        raise ErrorValidacionAdministrativa(
+            "El identificador de ubicación ('Ubicacion_ID') debe proporcionarse como texto.",
+            codigo=CodigoErrorAdministrativo.UBICACION_ID_OBLIGATORIO,
+        )
+    limpio = ubicacion_id.strip()
+    if not limpio:
+        raise ErrorValidacionAdministrativa(
+            "El campo 'Ubicacion_ID' es obligatorio y no puede estar vacío.",
+            codigo=CodigoErrorAdministrativo.UBICACION_ID_OBLIGATORIO,
+        )
+    if len(limpio) > LONGITUD_MAXIMA_UBICACION_ID:
+        raise ErrorValidacionAdministrativa(
+            f"El 'Ubicacion_ID' excede la longitud máxima permitida ({LONGITUD_MAXIMA_UBICACION_ID} caracteres).",
+            codigo=CodigoErrorAdministrativo.UBICACION_ID_INVALIDO,
+        )
+    if any(ord(c) < 32 or ord(c) == 127 for c in limpio):
+        raise ErrorValidacionAdministrativa(
+            "El 'Ubicacion_ID' contiene caracteres de control no permitidos.",
+            codigo=CodigoErrorAdministrativo.UBICACION_ID_INVALIDO,
+        )
+    return limpio
+
+
+def _validar_campo_fisico_ubicacion_texto(valor: Any, nombre_campo: str) -> str:
+    """Valida que un campo físico de ubicación (`Rack`, `Columna`, `Nivel`, `Posicion`) sea texto obligatorio."""
+    if not isinstance(valor, str):
+        raise ErrorValidacionAdministrativa(
+            f"El campo físico '{nombre_campo}' es obligatorio y debe proporcionarse como texto.",
+            codigo=CodigoErrorAdministrativo.CAMPOS_FISICOS_UBICACION_OBLIGATORIOS,
+        )
+    limpio = valor.strip()
+    if not limpio:
+        raise ErrorValidacionAdministrativa(
+            f"El campo físico '{nombre_campo}' es obligatorio y no puede estar vacío.",
+            codigo=CodigoErrorAdministrativo.CAMPOS_FISICOS_UBICACION_OBLIGATORIOS,
+        )
+    if len(limpio) > LONGITUD_MAXIMA_CAMPO_FISICO_UBICACION:
+        raise ErrorValidacionAdministrativa(
+            f"El campo físico '{nombre_campo}' excede la longitud máxima permitida ({LONGITUD_MAXIMA_CAMPO_FISICO_UBICACION} caracteres).",
+            codigo=CodigoErrorAdministrativo.CAMPOS_FISICOS_UBICACION_INVALIDOS,
+        )
+    if any(ord(c) < 32 or ord(c) == 127 for c in limpio):
+        raise ErrorValidacionAdministrativa(
+            f"El campo físico '{nombre_campo}' contiene caracteres de control no permitidos.",
+            codigo=CodigoErrorAdministrativo.CAMPOS_FISICOS_UBICACION_INVALIDOS,
+        )
+    return limpio
+
+
+def _obtener_ubicaciones_inactivas_set(df_ubicaciones: pd.DataFrame) -> set[str]:
+    """Devuelve el conjunto de `Ubicacion_ID` cuyo estado `Activo` es 'No'."""
+    inactivas: set[str] = set()
+    if "Activo" not in df_ubicaciones.columns:
+        return inactivas
+    for _, fila in df_ubicaciones.iterrows():
+        u_id = str(fila.get("Ubicacion_ID", "")).strip()
+        if not u_id:
+            continue
+        try:
+            es_activa = normalizar_valor_activo(fila.get("Activo", "Sí")) == "Sí"
+        except Exception:
+            es_activa = True
+        if not es_activa:
+            inactivas.add(u_id)
+    return inactivas
+
+
 def _normalizar_y_validar_asignaciones_entrada(
     *,
     df_ubicaciones: pd.DataFrame,
@@ -695,8 +974,9 @@ def _normalizar_y_validar_asignaciones_entrada(
     ubicacion_principal_id: Any = None,
     asignaciones: Sequence[Mapping[str, Any] | AsignacionUbicacionEntrada] | None = None,
 ) -> list[dict[str, str]]:
-    """Valida que el producto tenga al menos una ubicación existente, sin duplicados y exactamente una principal."""
+    """Valida que el producto tenga al menos una ubicación activa existente, sin duplicados y exactamente una principal."""
     ubicaciones_registradas = set(df_ubicaciones["Ubicacion_ID"].astype(str).str.strip())
+    ubicaciones_inactivas = _obtener_ubicaciones_inactivas_set(df_ubicaciones)
     filas_normalizadas: list[dict[str, str]] = []
 
     if asignaciones is not None:
@@ -743,6 +1023,11 @@ def _normalizar_y_validar_asignaciones_entrada(
                 raise ErrorValidacionAdministrativa(
                     f"La ubicación '{ubic_id}' no existe en el catálogo de Ubicaciones.",
                     codigo=CodigoErrorAdministrativo.UBICACION_INEXISTENTE,
+                )
+            if ubic_id in ubicaciones_inactivas:
+                raise ErrorValidacionAdministrativa(
+                    f"La ubicación '{ubic_id}' se encuentra desactivada ('Activo=No') y no puede asignarse a productos.",
+                    codigo=CodigoErrorAdministrativo.UBICACION_INACTIVA,
                 )
             if ubic_id in ubicaciones_vistas:
                 raise ErrorValidacionAdministrativa(
@@ -804,8 +1089,13 @@ def _normalizar_y_validar_asignaciones_entrada(
         u_id = u_raw.strip()
         if u_id not in ubicaciones_registradas:
             raise ErrorValidacionAdministrativa(
-                f"La ubicación '{u_id}' no existe en el catálogo predefinido de Ubicaciones.",
+                f"La ubicación '{u_id}' no existe en el catálogo de Ubicaciones.",
                 codigo=CodigoErrorAdministrativo.UBICACION_INEXISTENTE,
+            )
+        if u_id in ubicaciones_inactivas:
+            raise ErrorValidacionAdministrativa(
+                f"La ubicación '{u_id}' se encuentra desactivada ('Activo=No') y no puede asignarse a productos.",
+                codigo=CodigoErrorAdministrativo.UBICACION_INACTIVA,
             )
         if u_id in ubic_vistas_seq:
             raise ErrorValidacionAdministrativa(
@@ -840,6 +1130,11 @@ def _normalizar_y_validar_asignaciones_entrada(
             f"La ubicación principal '{principal_limpia}' no existe en el catálogo de Ubicaciones.",
             codigo=CodigoErrorAdministrativo.UBICACION_INEXISTENTE,
         )
+    if principal_limpia in ubicaciones_inactivas:
+        raise ErrorValidacionAdministrativa(
+            f"La ubicación principal '{principal_limpia}' se encuentra desactivada ('Activo=No') y no puede asignarse a productos.",
+            codigo=CodigoErrorAdministrativo.UBICACION_INACTIVA,
+        )
     if principal_limpia not in ubic_vistas_seq:
         raise ErrorValidacionAdministrativa(
             f"La ubicación principal '{principal_limpia}' debe formar parte de las ubicaciones asignadas al producto.",
@@ -873,6 +1168,11 @@ def _construir_resumen_borrador_espacio(
         "inicializacion_oficial_autorizada": bool(espacio.inicializacion_oficial_autorizada),
         "codigos_creados": list(espacio.codigos_productos_creados),
         "codigos_editados": list(espacio.codigos_productos_editados),
+        "categorias_creadas": list(espacio.categorias_creadas),
+        "categorias_editadas": list(espacio.categorias_editadas),
+        "ubicaciones_creadas": list(espacio.ubicaciones_creadas),
+        "ubicaciones_editadas": list(espacio.ubicaciones_editadas),
+        "ubicaciones_desactivadas": list(espacio.ubicaciones_desactivadas),
         "operaciones_locales": operaciones_serializadas,
     }
     if formulario_activo is not None:
@@ -1157,6 +1457,11 @@ def descartar_cambios_locales_en_sesion(
         origen_remoto_confirmado=espacio.origen_remoto_confirmado,
         codigos_productos_creados=(),
         codigos_productos_editados=(),
+        categorias_creadas=(),
+        categorias_editadas=(),
+        ubicaciones_creadas=(),
+        ubicaciones_editadas=(),
+        ubicaciones_desactivadas=(),
         historial_operaciones_locales=(),
         creado_en_epoch=espacio.creado_en_epoch,
         actualizado_en_epoch=sesion.ultima_actividad_epoch,
@@ -1183,6 +1488,8 @@ def limpiar_espacio_trabajo_admin_en_sesion(
     estado[CLAVE_RESULTADO_CARGA_ADMIN] = None
     estado[CLAVE_MODO_VISTA_ADMIN] = ModoVistaAdmin.INICIAL.value
     estado[CLAVE_PRODUCTO_ADMIN_SELECCIONADO] = None
+    estado[CLAVE_CATEGORIA_ADMIN_SELECCIONADA] = None
+    estado[CLAVE_UBICACION_ADMIN_SELECCIONADA] = None
     estado[CLAVE_TERMINO_FILTRO_ADMIN] = ""
     estado[CLAVE_MENSAJE_OPERACION_ADMIN] = None
     estado[CLAVE_FORMULARIO_BORRADOR_ADMIN] = None
@@ -1302,7 +1609,7 @@ def obtener_catalogo_categorias_admin(
     reloj: ProveedorReloj | None = None,
     ahora_epoch: float | None = None,
 ) -> list[dict[str, str]]:
-    """Devuelve el catálogo predefinido de categorías disponible para los formularios (Sección 5.4)."""
+    """Devuelve el catálogo de categorías disponible para los formularios administrativos."""
     _, espacio = _obtener_espacio_trabajo_autorizado(
         estado,
         espacio_explicito=espacio_trabajo,
@@ -1328,12 +1635,17 @@ def obtener_catalogo_categorias_admin(
 def obtener_catalogo_ubicaciones_admin(
     estado: Mapping[str, Any],
     *,
+    incluir_inactivas: bool = False,
     espacio_trabajo: EspacioTrabajoAdminInventario | None = None,
     contexto_dispositivo: ContextoDispositivo | None = None,
     reloj: ProveedorReloj | None = None,
     ahora_epoch: float | None = None,
-) -> list[dict[str, str]]:
-    """Devuelve el catálogo predefinido de ubicaciones físicas disponible para los formularios (Sección 5.4)."""
+) -> list[dict[str, Any]]:
+    """Devuelve el catálogo de ubicaciones físicas disponible para los formularios de productos.
+
+    Por defecto (`incluir_inactivas=False`), excluye las ubicaciones desactivadas (`Activo='No'`)
+    para que nunca se ofrezcan como opciones asignables a productos nuevos o existentes (RF-F-009, CA-F-006).
+    """
     _, espacio = _obtener_espacio_trabajo_autorizado(
         estado,
         espacio_explicito=espacio_trabajo,
@@ -1342,9 +1654,13 @@ def obtener_catalogo_ubicaciones_admin(
         ahora_epoch=ahora_epoch,
         registrar_actividad=False,
     )
-    ubicaciones: list[dict[str, str]] = []
+    ubicaciones: list[dict[str, Any]] = []
     for _, fila in espacio.inventario_trabajo.ubicaciones.iterrows():
         u_id = str(fila["Ubicacion_ID"]).strip()
+        activo_texto = normalizar_valor_activo(fila.get("Activo", "Sí"))
+        es_activa = activo_texto == "Sí"
+        if not incluir_inactivas and not es_activa:
+            continue
         etiqueta_fisica = formatear_ubicacion_fisica(fila)
         ubicaciones.append(
             {
@@ -1353,6 +1669,8 @@ def obtener_catalogo_ubicaciones_admin(
                 "columna": str(fila["Columna"]).strip(),
                 "nivel": str(fila["Nivel"]).strip(),
                 "posicion": str(fila["Posicion"]).strip(),
+                "activo": es_activa,
+                "activo_texto": activo_texto,
                 "etiqueta": f"{u_id} ({etiqueta_fisica})",
                 "etiqueta_fisica": etiqueta_fisica,
             }
@@ -1363,10 +1681,1239 @@ def obtener_catalogo_ubicaciones_admin(
 def rechazar_modificacion_catalogo_predefinido(
     nombre_catalogo: str = "Categorías/Ubicaciones",
 ) -> None:
-    """Rechaza cualquier intento de crear, editar o eliminar categorías o ubicaciones en v0 (RF-021, Sección 5.4)."""
+    """Función legada de compatibilidad con pruebas v0 (Prompt 09)."""
     raise ErrorValidacionAdministrativa(
         f"{MENSAJE_CATALOGO_PREDEFINIDO_NO_EDITABLE} (Catálogo solicitado: {nombre_catalogo}).",
         codigo=CodigoErrorAdministrativo.OPERACION_CATALOGO_NO_PERMITIDA,
+    )
+
+
+def consultar_categorias_administrativas(
+    estado: Mapping[str, Any],
+    *,
+    termino_filtro: str = "",
+    espacio_trabajo: EspacioTrabajoAdminInventario | None = None,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+    ahora_epoch: float | None = None,
+    registrar_actividad: bool = False,
+) -> list[dict[str, Any]]:
+    """Devuelve la lista estructurada de categorías de la copia de trabajo para administración (RF-F-001)."""
+    _, espacio = _obtener_espacio_trabajo_autorizado(
+        estado,
+        espacio_explicito=espacio_trabajo,
+        contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
+        ahora_epoch=ahora_epoch,
+        registrar_actividad=registrar_actividad,
+    )
+    df_categorias = espacio.inventario_trabajo.categorias
+    df_productos = espacio.inventario_trabajo.productos
+    creadas_set = set(espacio.categorias_creadas)
+    editadas_set = set(espacio.categorias_editadas)
+    filtro_norm = normalizar_texto_busqueda(termino_filtro)
+
+    productos_por_categoria: dict[str, list[str]] = {}
+    for _, fila_p in df_productos.iterrows():
+        c_id = str(fila_p["Categoria_ID"]).strip()
+        cod_p = str(fila_p["Codigo_Producto"]).strip()
+        productos_por_categoria.setdefault(c_id, []).append(cod_p)
+
+    resultado: list[dict[str, Any]] = []
+    for _, fila_c in df_categorias.iterrows():
+        cat_id = str(fila_c["Categoria_ID"]).strip()
+        nom_cat = str(fila_c["Nombre_Categoria"]).strip()
+        if filtro_norm:
+            coincide_id = filtro_norm in normalizar_texto_busqueda(cat_id)
+            coincide_nom = filtro_norm in normalizar_texto_busqueda(nom_cat)
+            if not (coincide_id or coincide_nom):
+                continue
+
+        codigos_asoc = productos_por_categoria.get(cat_id, [])
+        es_nueva = cat_id in creadas_set
+        es_editada = cat_id in editadas_set
+        tiene_cambio_local = es_nueva or es_editada
+        resultado.append(
+            {
+                "categoria_id": cat_id,
+                "nombre_categoria": nom_cat,
+                "etiqueta": f"{cat_id} — {nom_cat}",
+                "total_productos_asociados": len(codigos_asoc),
+                "codigos_productos_asociados": list(codigos_asoc),
+                "es_nueva_local": es_nueva,
+                "es_creada_en_sesion": es_nueva,
+                "es_editada_local": es_editada,
+                "es_editada_en_sesion": es_editada,
+                "tiene_cambios_locales": tiene_cambio_local,
+                "confirmado_en_github": (
+                    not tiene_cambio_local and espacio.origen_remoto_confirmado
+                ),
+                "estado_registro_texto": (
+                    "Nueva (cambio local sin guardar)"
+                    if es_nueva
+                    else (
+                        "Renombrada (cambio local sin guardar)"
+                        if es_editada
+                        else (
+                            "Confirmada en remoto"
+                            if espacio.origen_remoto_confirmado
+                            else "Base demostrativa local (sin guardar)"
+                        )
+                    )
+                ),
+            }
+        )
+    return resultado
+
+
+def consultar_categoria_administrativa_por_id(
+    estado: Mapping[str, Any],
+    categoria_id: Any,
+    *,
+    espacio_trabajo: EspacioTrabajoAdminInventario | None = None,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+    ahora_epoch: float | None = None,
+    registrar_actividad: bool = False,
+) -> dict[str, Any]:
+    """Consulta el detalle administrativo de una categoría por su `Categoria_ID` exacto."""
+    _, espacio = _obtener_espacio_trabajo_autorizado(
+        estado,
+        espacio_explicito=espacio_trabajo,
+        contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
+        ahora_epoch=ahora_epoch,
+        registrar_actividad=registrar_actividad,
+    )
+    cat_id_limpio = _validar_categoria_id_texto(categoria_id)
+    for cat in consultar_categorias_administrativas(
+        estado,
+        espacio_trabajo=espacio,
+        contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
+        ahora_epoch=ahora_epoch,
+        registrar_actividad=False,
+    ):
+        if cat["categoria_id"] == cat_id_limpio:
+            return cat
+
+    raise ErrorValidacionAdministrativa(
+        f"La categoría con identificador '{cat_id_limpio}' no existe en el inventario de trabajo.",
+        codigo=CodigoErrorAdministrativo.CATEGORIA_INEXISTENTE,
+    )
+
+
+def crear_categoria_local(
+    estado: MutableMapping[str, Any],
+    *,
+    categoria_id: Any,
+    nombre_categoria: Any,
+    espacio_trabajo: EspacioTrabajoAdminInventario | None = None,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+    ahora_epoch: float | None = None,
+    _sincronizar_borrador: bool = True,
+    _publicar_en_estado: bool = True,
+    _registrar_actividad: bool = True,
+) -> ResultadoOperacionCategoriaAdmin:
+    """Crea una nueva categoría en la copia temporal validando unicidad de ID y nombre normalizado (RF-F-001, RF-F-003, CA-F-001, CA-F-003)."""
+    sesion, espacio = _obtener_espacio_trabajo_autorizado(
+        estado,
+        espacio_explicito=espacio_trabajo,
+        contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
+        ahora_epoch=ahora_epoch,
+        registrar_actividad=False,
+    )
+
+    cat_id_limpio = _validar_categoria_id_texto(categoria_id)
+    nombre_limpio = _validar_nombre_categoria_texto(nombre_categoria)
+    clave_nombre_nuevo = normalizar_texto_comparacion_catalogo(nombre_limpio)
+
+    hojas_actuales = espacio.inventario_trabajo.obtener_hojas()
+    df_productos_cand = hojas_actuales[HOJA_PRODUCTOS].copy(deep=True)
+    df_categorias_cand = hojas_actuales[HOJA_CATEGORIAS].copy(deep=True)
+    df_ubicaciones_cand = hojas_actuales[HOJA_UBICACIONES].copy(deep=True)
+    df_asignaciones_cand = hojas_actuales[HOJA_ASIGNACIONES].copy(deep=True)
+
+    ids_existentes = set(df_categorias_cand["Categoria_ID"].astype(str).str.strip())
+    if cat_id_limpio in ids_existentes:
+        raise ErrorValidacionAdministrativa(
+            f"El identificador de categoría '{cat_id_limpio}' ya existe en el catálogo de Categorías.",
+            codigo=CodigoErrorAdministrativo.CATEGORIA_ID_DUPLICADO,
+        )
+
+    for _, fila_c in df_categorias_cand.iterrows():
+        nom_existente = str(fila_c["Nombre_Categoria"]).strip()
+        if normalizar_texto_comparacion_catalogo(nom_existente) == clave_nombre_nuevo:
+            raise ErrorValidacionAdministrativa(
+                f"Ya existe una categoría con un nombre equivalente ('{nom_existente}'). "
+                "No se permiten nombres de categoría duplicados.",
+                codigo=CodigoErrorAdministrativo.NOMBRE_CATEGORIA_DUPLICADO,
+            )
+
+    nueva_fila_cat = pd.DataFrame(
+        [{"Categoria_ID": cat_id_limpio, "Nombre_Categoria": nombre_limpio}]
+    )
+    df_categorias_nuevo = pd.concat(
+        [df_categorias_cand, nueva_fila_cat], ignore_index=True
+    )
+
+    hojas_candidatas = {
+        HOJA_PRODUCTOS: df_productos_cand,
+        HOJA_CATEGORIAS: df_categorias_nuevo,
+        HOJA_UBICACIONES: df_ubicaciones_cand,
+        HOJA_ASIGNACIONES: df_asignaciones_cand,
+    }
+
+    try:
+        inventario_validado = construir_inventario_datos(hojas_candidatas)
+    except ErrorInventario as exc_inv:
+        raise _convertir_error_motor_inventario(exc_inv) from exc_inv
+
+    categorias_creadas_nuevas = (
+        (*espacio.categorias_creadas, cat_id_limpio)
+        if cat_id_limpio not in espacio.categorias_creadas
+        else espacio.categorias_creadas
+    )
+    operacion = OperacionLocalInventario(
+        tipo_operacion="CREAR_CATEGORIA",
+        codigo_producto=cat_id_limpio,
+        nombre=nombre_limpio,
+        categoria_id=cat_id_limpio,
+        descripcion="",
+        asignaciones=(),
+        realizada_en_epoch=sesion.ultima_actividad_epoch,
+        detalles_operacion={
+            "categoria_id": cat_id_limpio,
+            "nombre_categoria": nombre_limpio,
+        },
+    )
+    historial_nuevo = (*espacio.historial_operaciones_locales, operacion)
+
+    es_demo_cand = espacio.es_copia_demostrativa or contiene_datos_demostrativos(inventario_validado)
+    espacio_candidato = EspacioTrabajoAdminInventario(
+        inventario_original=espacio.inventario_original,
+        inventario_trabajo=inventario_validado,
+        sha_base_remoto=espacio.sha_base_remoto,
+        origen_remoto_confirmado=espacio.origen_remoto_confirmado,
+        usuario_propietario=espacio.usuario_propietario,
+        id_sesion_propietaria=espacio.id_sesion_propietaria,
+        creado_en_epoch=espacio.creado_en_epoch,
+        actualizado_en_epoch=sesion.ultima_actividad_epoch,
+        codigos_productos_creados=espacio.codigos_productos_creados,
+        codigos_productos_editados=espacio.codigos_productos_editados,
+        categorias_creadas=categorias_creadas_nuevas,
+        categorias_editadas=espacio.categorias_editadas,
+        ubicaciones_creadas=espacio.ubicaciones_creadas,
+        ubicaciones_editadas=espacio.ubicaciones_editadas,
+        ubicaciones_desactivadas=espacio.ubicaciones_desactivadas,
+        historial_operaciones_locales=historial_nuevo,
+        es_copia_demostrativa=es_demo_cand,
+        inicializacion_oficial_autorizada=espacio.inicializacion_oficial_autorizada and not es_demo_cand,
+    )
+
+    if _sincronizar_borrador and isinstance(estado, MutableMapping):
+        _sincronizar_borrador_automatico_en_sesion(
+            estado,
+            espacio_candidato,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+            ahora_epoch=ahora_epoch,
+        )
+        sesion_post = estado.get(autenticacion.CLAVE_SESION_ADMIN)
+        if isinstance(sesion_post, EstadoSesionAdmin):
+            sesion = sesion_post
+    elif _registrar_actividad and isinstance(estado, MutableMapping):
+        sesion = registrar_actividad_administrativa(
+            estado,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+            ahora_epoch=ahora_epoch,
+        )
+
+    espacio.inventario_trabajo = inventario_validado
+    espacio.categorias_creadas = categorias_creadas_nuevas
+    espacio.historial_operaciones_locales = historial_nuevo
+    espacio.actualizado_en_epoch = sesion.ultima_actividad_epoch
+    espacio.es_copia_demostrativa = es_demo_cand
+    espacio.inicializacion_oficial_autorizada = (
+        espacio.inicializacion_oficial_autorizada and not es_demo_cand
+    )
+
+    if _publicar_en_estado and isinstance(estado, MutableMapping):
+        estado[CLAVE_ESPACIO_TRABAJO_ADMIN] = espacio
+
+    categoria_detalle = consultar_categoria_administrativa_por_id(
+        estado,
+        cat_id_limpio,
+        espacio_trabajo=espacio,
+        contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
+        ahora_epoch=ahora_epoch,
+        registrar_actividad=False,
+    )
+    return ResultadoOperacionCategoriaAdmin(
+        exito=True,
+        estado=EstadoInventarioAdmin.MODIFICACION_LOCAL_VALIDA,
+        mensaje_usuario=MENSAJE_CREACION_CATEGORIA_LOCAL_EXITOSA,
+        categoria_id=cat_id_limpio,
+        categoria=categoria_detalle,
+        espacio_trabajo=espacio,
+        sha_base_remoto=espacio.sha_base_remoto,
+        tiene_cambios_pendientes=espacio.tiene_cambios_locales_pendientes,
+        confirmado_en_github=False,
+        es_cambio_local_temporal=True,
+    )
+
+
+def renombrar_categoria_local(
+    estado: MutableMapping[str, Any],
+    *,
+    categoria_id: Any,
+    nuevo_nombre_categoria: Any = None,
+    nombre_categoria: Any = None,
+    nuevo_categoria_id: Any = None,
+    espacio_trabajo: EspacioTrabajoAdminInventario | None = None,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+    ahora_epoch: float | None = None,
+    _sincronizar_borrador: bool = True,
+    _publicar_en_estado: bool = True,
+    _registrar_actividad: bool = True,
+) -> ResultadoOperacionCategoriaAdmin:
+    """Edita el nombre de una categoría existente manteniendo su `Categoria_ID` inmutable (RF-F-002, RF-F-003, CA-F-002, CA-F-003)."""
+    sesion, espacio = _obtener_espacio_trabajo_autorizado(
+        estado,
+        espacio_explicito=espacio_trabajo,
+        contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
+        ahora_epoch=ahora_epoch,
+        registrar_actividad=False,
+    )
+
+    cat_id_limpio = _validar_categoria_id_texto(categoria_id)
+    if nuevo_categoria_id is not None:
+        if not isinstance(nuevo_categoria_id, str) or (
+            nuevo_categoria_id.strip() != cat_id_limpio
+        ):
+            raise ErrorValidacionAdministrativa(
+                f"El identificador único de la categoría ('{cat_id_limpio}') es inmutable y no puede modificarse una vez creado.",
+                codigo=CodigoErrorAdministrativo.CATEGORIA_ID_INMUTABLE,
+            )
+
+    nombre_candidato = (
+        nuevo_nombre_categoria
+        if nuevo_nombre_categoria is not None
+        else nombre_categoria
+    )
+    nombre_limpio = _validar_nombre_categoria_texto(nombre_candidato)
+    clave_nombre_nuevo = normalizar_texto_comparacion_catalogo(nombre_limpio)
+
+    hojas_actuales = espacio.inventario_trabajo.obtener_hojas()
+    df_productos_cand = hojas_actuales[HOJA_PRODUCTOS].copy(deep=True)
+    df_categorias_cand = hojas_actuales[HOJA_CATEGORIAS].copy(deep=True)
+    df_ubicaciones_cand = hojas_actuales[HOJA_UBICACIONES].copy(deep=True)
+    df_asignaciones_cand = hojas_actuales[HOJA_ASIGNACIONES].copy(deep=True)
+
+    mascara_cat = (
+        df_categorias_cand["Categoria_ID"].astype(str).str.strip() == cat_id_limpio
+    )
+    if not mascara_cat.any():
+        raise ErrorValidacionAdministrativa(
+            f"La categoría con identificador '{cat_id_limpio}' no existe en el inventario.",
+            codigo=CodigoErrorAdministrativo.CATEGORIA_INEXISTENTE,
+        )
+
+    for _, fila_c in df_categorias_cand.loc[~mascara_cat].iterrows():
+        nom_existente = str(fila_c["Nombre_Categoria"]).strip()
+        if normalizar_texto_comparacion_catalogo(nom_existente) == clave_nombre_nuevo:
+            raise ErrorValidacionAdministrativa(
+                f"Ya existe otra categoría con un nombre equivalente ('{nom_existente}'). "
+                "No se permiten nombres de categoría duplicados.",
+                codigo=CodigoErrorAdministrativo.NOMBRE_CATEGORIA_DUPLICADO,
+            )
+
+    df_categorias_cand.loc[mascara_cat, "Nombre_Categoria"] = nombre_limpio
+
+    hojas_candidatas = {
+        HOJA_PRODUCTOS: df_productos_cand,
+        HOJA_CATEGORIAS: df_categorias_cand,
+        HOJA_UBICACIONES: df_ubicaciones_cand,
+        HOJA_ASIGNACIONES: df_asignaciones_cand,
+    }
+
+    try:
+        inventario_validado = construir_inventario_datos(hojas_candidatas)
+    except ErrorInventario as exc_inv:
+        raise _convertir_error_motor_inventario(exc_inv) from exc_inv
+
+    categorias_editadas_nuevas = (
+        (*espacio.categorias_editadas, cat_id_limpio)
+        if (
+            cat_id_limpio not in espacio.categorias_creadas
+            and cat_id_limpio not in espacio.categorias_editadas
+        )
+        else espacio.categorias_editadas
+    )
+    operacion = OperacionLocalInventario(
+        tipo_operacion="RENOMBRAR_CATEGORIA",
+        codigo_producto=cat_id_limpio,
+        nombre=nombre_limpio,
+        categoria_id=cat_id_limpio,
+        descripcion="",
+        asignaciones=(),
+        realizada_en_epoch=sesion.ultima_actividad_epoch,
+        detalles_operacion={
+            "categoria_id": cat_id_limpio,
+            "nuevo_nombre_categoria": nombre_limpio,
+        },
+    )
+    historial_nuevo = (*espacio.historial_operaciones_locales, operacion)
+
+    es_demo_cand = espacio.es_copia_demostrativa or contiene_datos_demostrativos(inventario_validado)
+    espacio_candidato = EspacioTrabajoAdminInventario(
+        inventario_original=espacio.inventario_original,
+        inventario_trabajo=inventario_validado,
+        sha_base_remoto=espacio.sha_base_remoto,
+        origen_remoto_confirmado=espacio.origen_remoto_confirmado,
+        usuario_propietario=espacio.usuario_propietario,
+        id_sesion_propietaria=espacio.id_sesion_propietaria,
+        creado_en_epoch=espacio.creado_en_epoch,
+        actualizado_en_epoch=sesion.ultima_actividad_epoch,
+        codigos_productos_creados=espacio.codigos_productos_creados,
+        codigos_productos_editados=espacio.codigos_productos_editados,
+        categorias_creadas=espacio.categorias_creadas,
+        categorias_editadas=categorias_editadas_nuevas,
+        ubicaciones_creadas=espacio.ubicaciones_creadas,
+        ubicaciones_editadas=espacio.ubicaciones_editadas,
+        ubicaciones_desactivadas=espacio.ubicaciones_desactivadas,
+        historial_operaciones_locales=historial_nuevo,
+        es_copia_demostrativa=es_demo_cand,
+        inicializacion_oficial_autorizada=espacio.inicializacion_oficial_autorizada and not es_demo_cand,
+    )
+
+    if _sincronizar_borrador and isinstance(estado, MutableMapping):
+        _sincronizar_borrador_automatico_en_sesion(
+            estado,
+            espacio_candidato,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+            ahora_epoch=ahora_epoch,
+        )
+        sesion_post = estado.get(autenticacion.CLAVE_SESION_ADMIN)
+        if isinstance(sesion_post, EstadoSesionAdmin):
+            sesion = sesion_post
+    elif _registrar_actividad and isinstance(estado, MutableMapping):
+        sesion = registrar_actividad_administrativa(
+            estado,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+            ahora_epoch=ahora_epoch,
+        )
+
+    espacio.inventario_trabajo = inventario_validado
+    espacio.categorias_editadas = categorias_editadas_nuevas
+    espacio.historial_operaciones_locales = historial_nuevo
+    espacio.actualizado_en_epoch = sesion.ultima_actividad_epoch
+    espacio.es_copia_demostrativa = es_demo_cand
+    espacio.inicializacion_oficial_autorizada = (
+        espacio.inicializacion_oficial_autorizada and not es_demo_cand
+    )
+
+    if _publicar_en_estado and isinstance(estado, MutableMapping):
+        estado[CLAVE_ESPACIO_TRABAJO_ADMIN] = espacio
+
+    categoria_detalle = consultar_categoria_administrativa_por_id(
+        estado,
+        cat_id_limpio,
+        espacio_trabajo=espacio,
+        contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
+        ahora_epoch=ahora_epoch,
+        registrar_actividad=False,
+    )
+    return ResultadoOperacionCategoriaAdmin(
+        exito=True,
+        estado=EstadoInventarioAdmin.MODIFICACION_LOCAL_VALIDA,
+        mensaje_usuario=MENSAJE_EDICION_CATEGORIA_LOCAL_EXITOSA,
+        categoria_id=cat_id_limpio,
+        categoria=categoria_detalle,
+        espacio_trabajo=espacio,
+        sha_base_remoto=espacio.sha_base_remoto,
+        tiene_cambios_pendientes=espacio.tiene_cambios_locales_pendientes,
+        confirmado_en_github=False,
+        es_cambio_local_temporal=True,
+    )
+
+
+editar_categoria_local = renombrar_categoria_local
+
+
+def consultar_ubicaciones_administrativas(
+    estado: Mapping[str, Any],
+    *,
+    termino_filtro: str = "",
+    incluir_inactivas: bool = True,
+    espacio_trabajo: EspacioTrabajoAdminInventario | None = None,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+    ahora_epoch: float | None = None,
+    registrar_actividad: bool = False,
+) -> list[dict[str, Any]]:
+    """Devuelve la lista estructurada de ubicaciones físicas de la copia de trabajo para administración (RF-F-004, RF-F-007)."""
+    _, espacio = _obtener_espacio_trabajo_autorizado(
+        estado,
+        espacio_explicito=espacio_trabajo,
+        contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
+        ahora_epoch=ahora_epoch,
+        registrar_actividad=registrar_actividad,
+    )
+    df_ubicaciones = espacio.inventario_trabajo.ubicaciones
+    df_asignaciones = espacio.inventario_trabajo.asignaciones
+    creadas_set = set(espacio.ubicaciones_creadas)
+    editadas_set = set(espacio.ubicaciones_editadas)
+    desactivadas_set = set(espacio.ubicaciones_desactivadas)
+    filtro_norm = normalizar_texto_busqueda(termino_filtro)
+
+    productos_por_ubicacion: dict[str, list[str]] = {}
+    for _, fila_a in df_asignaciones.iterrows():
+        u_id = str(fila_a["Ubicacion_ID"]).strip()
+        cod_p = str(fila_a["Codigo_Producto"]).strip()
+        productos_por_ubicacion.setdefault(u_id, []).append(cod_p)
+
+    resultado: list[dict[str, Any]] = []
+    for _, fila_u in df_ubicaciones.iterrows():
+        u_id = str(fila_u["Ubicacion_ID"]).strip()
+        rack = str(fila_u["Rack"]).strip()
+        columna = str(fila_u["Columna"]).strip()
+        nivel = str(fila_u["Nivel"]).strip()
+        posicion = str(fila_u["Posicion"]).strip()
+        activo_texto = normalizar_valor_activo(fila_u.get("Activo", "Sí"))
+        es_activa = activo_texto == "Sí"
+
+        if not incluir_inactivas and not es_activa:
+            continue
+
+        etiqueta_fisica = formatear_ubicacion_fisica(fila_u)
+        if filtro_norm:
+            texto_buscable = f"{u_id} {rack} {columna} {nivel} {posicion} {etiqueta_fisica}"
+            if filtro_norm not in normalizar_texto_busqueda(texto_buscable):
+                continue
+
+        codigos_asoc = productos_por_ubicacion.get(u_id, [])
+        tiene_asoc = len(codigos_asoc) > 0
+        es_nueva = u_id in creadas_set
+        es_editada = u_id in editadas_set
+        es_desactivada = u_id in desactivadas_set
+        tiene_cambio_local = es_nueva or es_editada or es_desactivada
+
+        if tiene_asoc:
+            lista_cods = ", ".join(codigos_asoc)
+            motivo_bloqueo = (
+                f"Esta ubicación tiene {len(codigos_asoc)} producto(s) asociado(s) ({lista_cods}). "
+                "Reasigna primero dichos productos a otra ubicación activa antes de modificar o desactivar esta ubicación."
+            )
+        elif not es_activa:
+            motivo_bloqueo = "La ubicación ya se encuentra inactiva."
+        else:
+            motivo_bloqueo = ""
+
+        resultado.append(
+            {
+                "ubicacion_id": u_id,
+                "rack": rack,
+                "columna": columna,
+                "nivel": nivel,
+                "posicion": posicion,
+                "activo": activo_texto,
+                "es_activa": es_activa,
+                "activo_texto": activo_texto,
+                "estado_ubicacion_texto": "Activa" if es_activa else "Inactiva",
+                "etiqueta_fisica": etiqueta_fisica,
+                "etiqueta": f"{u_id} ({etiqueta_fisica})",
+                "total_productos_asociados": len(codigos_asoc),
+                "codigos_productos_asociados": list(codigos_asoc),
+                "tiene_productos_asociados": tiene_asoc,
+                "permite_editar_fisicamente": not tiene_asoc,
+                "puede_editarse": not tiene_asoc,
+                "permite_desactivar": es_activa and not tiene_asoc,
+                "puede_desactivarse": es_activa and not tiene_asoc,
+                "motivo_bloqueo_modificacion": motivo_bloqueo,
+                "motivo_bloqueo": motivo_bloqueo,
+                "es_nueva_local": es_nueva,
+                "es_creada_en_sesion": es_nueva,
+                "es_editada_local": es_editada,
+                "es_editada_en_sesion": es_editada,
+                "es_desactivada_local": es_desactivada,
+                "es_desactivada_en_sesion": es_desactivada,
+                "tiene_cambios_locales": tiene_cambio_local,
+                "confirmado_en_github": (
+                    not tiene_cambio_local and espacio.origen_remoto_confirmado
+                ),
+                "estado_registro_texto": (
+                    "Desactivada (cambio local sin guardar)"
+                    if es_desactivada
+                    else (
+                        "Nueva (cambio local sin guardar)"
+                        if es_nueva
+                        else (
+                            "Editada (cambio local sin guardar)"
+                            if es_editada
+                            else (
+                                "Confirmada en remoto"
+                                if espacio.origen_remoto_confirmado
+                                else "Base demostrativa local (sin guardar)"
+                            )
+                        )
+                    )
+                ),
+            }
+        )
+    return resultado
+
+
+def consultar_ubicacion_administrativa_por_id(
+    estado: Mapping[str, Any],
+    ubicacion_id: Any,
+    *,
+    espacio_trabajo: EspacioTrabajoAdminInventario | None = None,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+    ahora_epoch: float | None = None,
+    registrar_actividad: bool = False,
+) -> dict[str, Any]:
+    """Consulta el detalle administrativo de una ubicación física por su `Ubicacion_ID` exacto."""
+    _, espacio = _obtener_espacio_trabajo_autorizado(
+        estado,
+        espacio_explicito=espacio_trabajo,
+        contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
+        ahora_epoch=ahora_epoch,
+        registrar_actividad=registrar_actividad,
+    )
+    ubic_id_limpio = _validar_ubicacion_id_texto(ubicacion_id)
+    for ubic in consultar_ubicaciones_administrativas(
+        estado,
+        incluir_inactivas=True,
+        espacio_trabajo=espacio,
+        contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
+        ahora_epoch=ahora_epoch,
+        registrar_actividad=False,
+    ):
+        if ubic["ubicacion_id"] == ubic_id_limpio:
+            return ubic
+
+    raise ErrorValidacionAdministrativa(
+        f"La ubicación con identificador '{ubic_id_limpio}' no existe en el inventario de trabajo.",
+        codigo=CodigoErrorAdministrativo.UBICACION_INEXISTENTE,
+    )
+
+
+def crear_ubicacion_local(
+    estado: MutableMapping[str, Any],
+    *,
+    ubicacion_id: Any,
+    rack: Any,
+    columna: Any,
+    nivel: Any,
+    posicion: Any,
+    espacio_trabajo: EspacioTrabajoAdminInventario | None = None,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+    ahora_epoch: float | None = None,
+    _sincronizar_borrador: bool = True,
+    _publicar_en_estado: bool = True,
+    _registrar_actividad: bool = True,
+) -> ResultadoOperacionUbicacionAdmin:
+    """Crea una nueva ubicación física activa en la copia temporal validando unicidad de ID y combinación física (RF-F-004, RF-F-006, CA-F-004)."""
+    sesion, espacio = _obtener_espacio_trabajo_autorizado(
+        estado,
+        espacio_explicito=espacio_trabajo,
+        contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
+        ahora_epoch=ahora_epoch,
+        registrar_actividad=False,
+    )
+
+    ubic_id_limpio = _validar_ubicacion_id_texto(ubicacion_id)
+    rack_limpio = _validar_campo_fisico_ubicacion_texto(rack, "Rack")
+    columna_limpia = _validar_campo_fisico_ubicacion_texto(columna, "Columna")
+    nivel_limpio = _validar_campo_fisico_ubicacion_texto(nivel, "Nivel")
+    posicion_limpia = _validar_campo_fisico_ubicacion_texto(posicion, "Posicion")
+
+    clave_fisica_nueva = (
+        normalizar_texto_comparacion_catalogo(rack_limpio),
+        normalizar_texto_comparacion_catalogo(columna_limpia),
+        normalizar_texto_comparacion_catalogo(nivel_limpio),
+        normalizar_texto_comparacion_catalogo(posicion_limpia),
+    )
+
+    hojas_actuales = espacio.inventario_trabajo.obtener_hojas()
+    df_productos_cand = hojas_actuales[HOJA_PRODUCTOS].copy(deep=True)
+    df_categorias_cand = hojas_actuales[HOJA_CATEGORIAS].copy(deep=True)
+    df_ubicaciones_cand = hojas_actuales[HOJA_UBICACIONES].copy(deep=True)
+    df_asignaciones_cand = hojas_actuales[HOJA_ASIGNACIONES].copy(deep=True)
+
+    ids_existentes = set(df_ubicaciones_cand["Ubicacion_ID"].astype(str).str.strip())
+    if ubic_id_limpio in ids_existentes:
+        raise ErrorValidacionAdministrativa(
+            f"El identificador de ubicación '{ubic_id_limpio}' ya existe en el catálogo de Ubicaciones.",
+            codigo=CodigoErrorAdministrativo.UBICACION_ID_DUPLICADO,
+        )
+
+    for _, fila_u in df_ubicaciones_cand.iterrows():
+        clave_existente = (
+            normalizar_texto_comparacion_catalogo(fila_u["Rack"]),
+            normalizar_texto_comparacion_catalogo(fila_u["Columna"]),
+            normalizar_texto_comparacion_catalogo(fila_u["Nivel"]),
+            normalizar_texto_comparacion_catalogo(fila_u["Posicion"]),
+        )
+        if clave_existente == clave_fisica_nueva:
+            u_dup = str(fila_u["Ubicacion_ID"]).strip()
+            etiqueta_dup = formatear_ubicacion_fisica(fila_u)
+            raise ErrorValidacionAdministrativa(
+                f"La combinación física ({etiqueta_dup}) ya está registrada en la ubicación '{u_dup}'. "
+                "No se permiten ubicaciones con la misma combinación de Rack, Columna, Nivel y Posición.",
+                codigo=CodigoErrorAdministrativo.UBICACION_FISICA_DUPLICADA,
+            )
+
+    nueva_fila_ubic = pd.DataFrame(
+        [
+            {
+                "Ubicacion_ID": ubic_id_limpio,
+                "Rack": rack_limpio,
+                "Columna": columna_limpia,
+                "Nivel": nivel_limpio,
+                "Posicion": posicion_limpia,
+                "Activo": "Sí",
+            }
+        ]
+    )
+    df_ubicaciones_nuevo = pd.concat(
+        [df_ubicaciones_cand, nueva_fila_ubic], ignore_index=True
+    )
+
+    hojas_candidatas = {
+        HOJA_PRODUCTOS: df_productos_cand,
+        HOJA_CATEGORIAS: df_categorias_cand,
+        HOJA_UBICACIONES: df_ubicaciones_nuevo,
+        HOJA_ASIGNACIONES: df_asignaciones_cand,
+    }
+
+    try:
+        inventario_validado = construir_inventario_datos(hojas_candidatas)
+    except ErrorInventario as exc_inv:
+        raise _convertir_error_motor_inventario(exc_inv) from exc_inv
+
+    ubicaciones_creadas_nuevas = (
+        (*espacio.ubicaciones_creadas, ubic_id_limpio)
+        if ubic_id_limpio not in espacio.ubicaciones_creadas
+        else espacio.ubicaciones_creadas
+    )
+    etiqueta_nueva = f"Rack {rack_limpio} · Columna {columna_limpia} · Nivel {nivel_limpio} · Posición {posicion_limpia}"
+    operacion = OperacionLocalInventario(
+        tipo_operacion="CREAR_UBICACION",
+        codigo_producto=ubic_id_limpio,
+        nombre=etiqueta_nueva,
+        categoria_id="",
+        descripcion="",
+        asignaciones=(),
+        realizada_en_epoch=sesion.ultima_actividad_epoch,
+        detalles_operacion={
+            "ubicacion_id": ubic_id_limpio,
+            "rack": rack_limpio,
+            "columna": columna_limpia,
+            "nivel": nivel_limpio,
+            "posicion": posicion_limpia,
+            "activo": "Sí",
+        },
+    )
+    historial_nuevo = (*espacio.historial_operaciones_locales, operacion)
+
+    es_demo_cand = espacio.es_copia_demostrativa or contiene_datos_demostrativos(inventario_validado)
+    espacio_candidato = EspacioTrabajoAdminInventario(
+        inventario_original=espacio.inventario_original,
+        inventario_trabajo=inventario_validado,
+        sha_base_remoto=espacio.sha_base_remoto,
+        origen_remoto_confirmado=espacio.origen_remoto_confirmado,
+        usuario_propietario=espacio.usuario_propietario,
+        id_sesion_propietaria=espacio.id_sesion_propietaria,
+        creado_en_epoch=espacio.creado_en_epoch,
+        actualizado_en_epoch=sesion.ultima_actividad_epoch,
+        codigos_productos_creados=espacio.codigos_productos_creados,
+        codigos_productos_editados=espacio.codigos_productos_editados,
+        categorias_creadas=espacio.categorias_creadas,
+        categorias_editadas=espacio.categorias_editadas,
+        ubicaciones_creadas=ubicaciones_creadas_nuevas,
+        ubicaciones_editadas=espacio.ubicaciones_editadas,
+        ubicaciones_desactivadas=espacio.ubicaciones_desactivadas,
+        historial_operaciones_locales=historial_nuevo,
+        es_copia_demostrativa=es_demo_cand,
+        inicializacion_oficial_autorizada=espacio.inicializacion_oficial_autorizada and not es_demo_cand,
+    )
+
+    if _sincronizar_borrador and isinstance(estado, MutableMapping):
+        _sincronizar_borrador_automatico_en_sesion(
+            estado,
+            espacio_candidato,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+            ahora_epoch=ahora_epoch,
+        )
+        sesion_post = estado.get(autenticacion.CLAVE_SESION_ADMIN)
+        if isinstance(sesion_post, EstadoSesionAdmin):
+            sesion = sesion_post
+    elif _registrar_actividad and isinstance(estado, MutableMapping):
+        sesion = registrar_actividad_administrativa(
+            estado,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+            ahora_epoch=ahora_epoch,
+        )
+
+    espacio.inventario_trabajo = inventario_validado
+    espacio.ubicaciones_creadas = ubicaciones_creadas_nuevas
+    espacio.historial_operaciones_locales = historial_nuevo
+    espacio.actualizado_en_epoch = sesion.ultima_actividad_epoch
+    espacio.es_copia_demostrativa = es_demo_cand
+    espacio.inicializacion_oficial_autorizada = (
+        espacio.inicializacion_oficial_autorizada and not es_demo_cand
+    )
+
+    if _publicar_en_estado and isinstance(estado, MutableMapping):
+        estado[CLAVE_ESPACIO_TRABAJO_ADMIN] = espacio
+
+    ubicacion_detalle = consultar_ubicacion_administrativa_por_id(
+        estado,
+        ubic_id_limpio,
+        espacio_trabajo=espacio,
+        contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
+        ahora_epoch=ahora_epoch,
+        registrar_actividad=False,
+    )
+    return ResultadoOperacionUbicacionAdmin(
+        exito=True,
+        estado=EstadoInventarioAdmin.MODIFICACION_LOCAL_VALIDA,
+        mensaje_usuario=MENSAJE_CREACION_UBICACION_LOCAL_EXITOSA,
+        ubicacion_id=ubic_id_limpio,
+        ubicacion=ubicacion_detalle,
+        espacio_trabajo=espacio,
+        sha_base_remoto=espacio.sha_base_remoto,
+        tiene_cambios_pendientes=espacio.tiene_cambios_locales_pendientes,
+        confirmado_en_github=False,
+        es_cambio_local_temporal=True,
+    )
+
+
+def editar_ubicacion_local(
+    estado: MutableMapping[str, Any],
+    *,
+    ubicacion_id: Any,
+    rack: Any = None,
+    columna: Any = None,
+    nivel: Any = None,
+    posicion: Any = None,
+    nuevo_ubicacion_id: Any = None,
+    espacio_trabajo: EspacioTrabajoAdminInventario | None = None,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+    ahora_epoch: float | None = None,
+    _sincronizar_borrador: bool = True,
+    _publicar_en_estado: bool = True,
+    _registrar_actividad: bool = True,
+) -> ResultadoOperacionUbicacionAdmin:
+    """Edita los datos físicos de una ubicación únicamente si no tiene productos asociados (RF-F-005, RF-F-006, RF-F-007, CA-F-004, CA-F-005)."""
+    sesion, espacio = _obtener_espacio_trabajo_autorizado(
+        estado,
+        espacio_explicito=espacio_trabajo,
+        contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
+        ahora_epoch=ahora_epoch,
+        registrar_actividad=False,
+    )
+
+    ubic_id_limpio = _validar_ubicacion_id_texto(ubicacion_id)
+    if nuevo_ubicacion_id is not None:
+        if not isinstance(nuevo_ubicacion_id, str) or (
+            nuevo_ubicacion_id.strip() != ubic_id_limpio
+        ):
+            raise ErrorValidacionAdministrativa(
+                f"El identificador único de la ubicación ('{ubic_id_limpio}') es inmutable y no puede modificarse una vez creado.",
+                codigo=CodigoErrorAdministrativo.UBICACION_ID_INMUTABLE,
+            )
+
+    hojas_actuales = espacio.inventario_trabajo.obtener_hojas()
+    df_productos_cand = hojas_actuales[HOJA_PRODUCTOS].copy(deep=True)
+    df_categorias_cand = hojas_actuales[HOJA_CATEGORIAS].copy(deep=True)
+    df_ubicaciones_cand = hojas_actuales[HOJA_UBICACIONES].copy(deep=True)
+    df_asignaciones_cand = hojas_actuales[HOJA_ASIGNACIONES].copy(deep=True)
+
+    mascara_ubic = (
+        df_ubicaciones_cand["Ubicacion_ID"].astype(str).str.strip() == ubic_id_limpio
+    )
+    if not mascara_ubic.any():
+        raise ErrorValidacionAdministrativa(
+            f"La ubicación con identificador '{ubic_id_limpio}' no existe en el inventario.",
+            codigo=CodigoErrorAdministrativo.UBICACION_INEXISTENTE,
+        )
+
+    mascara_asig = (
+        df_asignaciones_cand["Ubicacion_ID"].astype(str).str.strip() == ubic_id_limpio
+    )
+    if mascara_asig.any():
+        codigos_asoc = [
+            str(c).strip()
+            for c in df_asignaciones_cand.loc[mascara_asig, "Codigo_Producto"].tolist()
+        ]
+        raise ErrorValidacionAdministrativa(
+            f"No es posible editar los datos físicos de la ubicación '{ubic_id_limpio}' porque tiene "
+            f"{len(codigos_asoc)} producto(s) asociado(s) ({', '.join(codigos_asoc)}). "
+            "Reasigna primero dichos productos a otra ubicación activa.",
+            codigo=CodigoErrorAdministrativo.UBICACION_CON_PRODUCTOS_ASOCIADOS,
+        )
+
+    fila_actual = df_ubicaciones_cand.loc[mascara_ubic].iloc[0]
+    rack_efectivo = (
+        _validar_campo_fisico_ubicacion_texto(rack, "Rack")
+        if rack is not None
+        else _validar_campo_fisico_ubicacion_texto(str(fila_actual["Rack"]), "Rack")
+    )
+    columna_efectiva = (
+        _validar_campo_fisico_ubicacion_texto(columna, "Columna")
+        if columna is not None
+        else _validar_campo_fisico_ubicacion_texto(str(fila_actual["Columna"]), "Columna")
+    )
+    nivel_efectivo = (
+        _validar_campo_fisico_ubicacion_texto(nivel, "Nivel")
+        if nivel is not None
+        else _validar_campo_fisico_ubicacion_texto(str(fila_actual["Nivel"]), "Nivel")
+    )
+    posicion_efectiva = (
+        _validar_campo_fisico_ubicacion_texto(posicion, "Posicion")
+        if posicion is not None
+        else _validar_campo_fisico_ubicacion_texto(str(fila_actual["Posicion"]), "Posicion")
+    )
+
+    clave_fisica_nueva = (
+        normalizar_texto_comparacion_catalogo(rack_efectivo),
+        normalizar_texto_comparacion_catalogo(columna_efectiva),
+        normalizar_texto_comparacion_catalogo(nivel_efectivo),
+        normalizar_texto_comparacion_catalogo(posicion_efectiva),
+    )
+
+    for _, fila_u in df_ubicaciones_cand.loc[~mascara_ubic].iterrows():
+        clave_existente = (
+            normalizar_texto_comparacion_catalogo(fila_u["Rack"]),
+            normalizar_texto_comparacion_catalogo(fila_u["Columna"]),
+            normalizar_texto_comparacion_catalogo(fila_u["Nivel"]),
+            normalizar_texto_comparacion_catalogo(fila_u["Posicion"]),
+        )
+        if clave_existente == clave_fisica_nueva:
+            u_dup = str(fila_u["Ubicacion_ID"]).strip()
+            etiqueta_dup = formatear_ubicacion_fisica(fila_u)
+            raise ErrorValidacionAdministrativa(
+                f"La combinación física ({etiqueta_dup}) ya está registrada en la ubicación '{u_dup}'. "
+                "No se permiten ubicaciones con la misma combinación de Rack, Columna, Nivel y Posición.",
+                codigo=CodigoErrorAdministrativo.UBICACION_FISICA_DUPLICADA,
+            )
+
+    df_ubicaciones_cand.loc[mascara_ubic, "Rack"] = rack_efectivo
+    df_ubicaciones_cand.loc[mascara_ubic, "Columna"] = columna_efectiva
+    df_ubicaciones_cand.loc[mascara_ubic, "Nivel"] = nivel_efectivo
+    df_ubicaciones_cand.loc[mascara_ubic, "Posicion"] = posicion_efectiva
+
+    hojas_candidatas = {
+        HOJA_PRODUCTOS: df_productos_cand,
+        HOJA_CATEGORIAS: df_categorias_cand,
+        HOJA_UBICACIONES: df_ubicaciones_cand,
+        HOJA_ASIGNACIONES: df_asignaciones_cand,
+    }
+
+    try:
+        inventario_validado = construir_inventario_datos(hojas_candidatas)
+    except ErrorInventario as exc_inv:
+        raise _convertir_error_motor_inventario(exc_inv) from exc_inv
+
+    ubicaciones_editadas_nuevas = (
+        (*espacio.ubicaciones_editadas, ubic_id_limpio)
+        if (
+            ubic_id_limpio not in espacio.ubicaciones_creadas
+            and ubic_id_limpio not in espacio.ubicaciones_editadas
+        )
+        else espacio.ubicaciones_editadas
+    )
+    etiqueta_nueva = (
+        f"Rack {rack_efectivo} · Columna {columna_efectiva} · "
+        f"Nivel {nivel_efectivo} · Posición {posicion_efectiva}"
+    )
+    operacion = OperacionLocalInventario(
+        tipo_operacion="EDITAR_UBICACION",
+        codigo_producto=ubic_id_limpio,
+        nombre=etiqueta_nueva,
+        categoria_id="",
+        descripcion="",
+        asignaciones=(),
+        realizada_en_epoch=sesion.ultima_actividad_epoch,
+        detalles_operacion={
+            "ubicacion_id": ubic_id_limpio,
+            "rack": rack_efectivo,
+            "columna": columna_efectiva,
+            "nivel": nivel_efectivo,
+            "posicion": posicion_efectiva,
+        },
+    )
+    historial_nuevo = (*espacio.historial_operaciones_locales, operacion)
+
+    es_demo_cand = espacio.es_copia_demostrativa or contiene_datos_demostrativos(inventario_validado)
+    espacio_candidato = EspacioTrabajoAdminInventario(
+        inventario_original=espacio.inventario_original,
+        inventario_trabajo=inventario_validado,
+        sha_base_remoto=espacio.sha_base_remoto,
+        origen_remoto_confirmado=espacio.origen_remoto_confirmado,
+        usuario_propietario=espacio.usuario_propietario,
+        id_sesion_propietaria=espacio.id_sesion_propietaria,
+        creado_en_epoch=espacio.creado_en_epoch,
+        actualizado_en_epoch=sesion.ultima_actividad_epoch,
+        codigos_productos_creados=espacio.codigos_productos_creados,
+        codigos_productos_editados=espacio.codigos_productos_editados,
+        categorias_creadas=espacio.categorias_creadas,
+        categorias_editadas=espacio.categorias_editadas,
+        ubicaciones_creadas=espacio.ubicaciones_creadas,
+        ubicaciones_editadas=ubicaciones_editadas_nuevas,
+        ubicaciones_desactivadas=espacio.ubicaciones_desactivadas,
+        historial_operaciones_locales=historial_nuevo,
+        es_copia_demostrativa=es_demo_cand,
+        inicializacion_oficial_autorizada=espacio.inicializacion_oficial_autorizada and not es_demo_cand,
+    )
+
+    if _sincronizar_borrador and isinstance(estado, MutableMapping):
+        _sincronizar_borrador_automatico_en_sesion(
+            estado,
+            espacio_candidato,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+            ahora_epoch=ahora_epoch,
+        )
+        sesion_post = estado.get(autenticacion.CLAVE_SESION_ADMIN)
+        if isinstance(sesion_post, EstadoSesionAdmin):
+            sesion = sesion_post
+    elif _registrar_actividad and isinstance(estado, MutableMapping):
+        sesion = registrar_actividad_administrativa(
+            estado,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+            ahora_epoch=ahora_epoch,
+        )
+
+    espacio.inventario_trabajo = inventario_validado
+    espacio.ubicaciones_editadas = ubicaciones_editadas_nuevas
+    espacio.historial_operaciones_locales = historial_nuevo
+    espacio.actualizado_en_epoch = sesion.ultima_actividad_epoch
+    espacio.es_copia_demostrativa = es_demo_cand
+    espacio.inicializacion_oficial_autorizada = (
+        espacio.inicializacion_oficial_autorizada and not es_demo_cand
+    )
+
+    if _publicar_en_estado and isinstance(estado, MutableMapping):
+        estado[CLAVE_ESPACIO_TRABAJO_ADMIN] = espacio
+
+    ubicacion_detalle = consultar_ubicacion_administrativa_por_id(
+        estado,
+        ubic_id_limpio,
+        espacio_trabajo=espacio,
+        contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
+        ahora_epoch=ahora_epoch,
+        registrar_actividad=False,
+    )
+    return ResultadoOperacionUbicacionAdmin(
+        exito=True,
+        estado=EstadoInventarioAdmin.MODIFICACION_LOCAL_VALIDA,
+        mensaje_usuario=MENSAJE_EDICION_UBICACION_LOCAL_EXITOSA,
+        ubicacion_id=ubic_id_limpio,
+        ubicacion=ubicacion_detalle,
+        espacio_trabajo=espacio,
+        sha_base_remoto=espacio.sha_base_remoto,
+        tiene_cambios_pendientes=espacio.tiene_cambios_locales_pendientes,
+        confirmado_en_github=False,
+        es_cambio_local_temporal=True,
+    )
+
+
+def desactivar_ubicacion_local(
+    estado: MutableMapping[str, Any],
+    *,
+    ubicacion_id: Any,
+    espacio_trabajo: EspacioTrabajoAdminInventario | None = None,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+    ahora_epoch: float | None = None,
+    _sincronizar_borrador: bool = True,
+    _publicar_en_estado: bool = True,
+    _registrar_actividad: bool = True,
+) -> ResultadoOperacionUbicacionAdmin:
+    """Desactiva una ubicación física ('Activo=No') únicamente si no tiene productos asociados (RF-F-007, RF-F-009, CA-F-006)."""
+    sesion, espacio = _obtener_espacio_trabajo_autorizado(
+        estado,
+        espacio_explicito=espacio_trabajo,
+        contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
+        ahora_epoch=ahora_epoch,
+        registrar_actividad=False,
+    )
+
+    ubic_id_limpio = _validar_ubicacion_id_texto(ubicacion_id)
+
+    hojas_actuales = espacio.inventario_trabajo.obtener_hojas()
+    df_productos_cand = hojas_actuales[HOJA_PRODUCTOS].copy(deep=True)
+    df_categorias_cand = hojas_actuales[HOJA_CATEGORIAS].copy(deep=True)
+    df_ubicaciones_cand = hojas_actuales[HOJA_UBICACIONES].copy(deep=True)
+    df_asignaciones_cand = hojas_actuales[HOJA_ASIGNACIONES].copy(deep=True)
+
+    mascara_ubic = (
+        df_ubicaciones_cand["Ubicacion_ID"].astype(str).str.strip() == ubic_id_limpio
+    )
+    if not mascara_ubic.any():
+        raise ErrorValidacionAdministrativa(
+            f"La ubicación con identificador '{ubic_id_limpio}' no existe en el inventario.",
+            codigo=CodigoErrorAdministrativo.UBICACION_INEXISTENTE,
+        )
+
+    mascara_asig = (
+        df_asignaciones_cand["Ubicacion_ID"].astype(str).str.strip() == ubic_id_limpio
+    )
+    if mascara_asig.any():
+        codigos_asoc = [
+            str(c).strip()
+            for c in df_asignaciones_cand.loc[mascara_asig, "Codigo_Producto"].tolist()
+        ]
+        raise ErrorValidacionAdministrativa(
+            f"No es posible desactivar la ubicación '{ubic_id_limpio}' porque tiene "
+            f"{len(codigos_asoc)} producto(s) asociado(s) ({', '.join(codigos_asoc)}). "
+            "Reasigna primero dichos productos a otra ubicación activa antes de desactivarla.",
+            codigo=CodigoErrorAdministrativo.UBICACION_CON_PRODUCTOS_ASOCIADOS,
+        )
+
+    fila_actual = df_ubicaciones_cand.loc[mascara_ubic].iloc[0]
+    estado_actual = normalizar_valor_activo(fila_actual.get("Activo", "Sí"))
+    if estado_actual == "No":
+        raise ErrorValidacionAdministrativa(
+            f"La ubicación '{ubic_id_limpio}' ya se encuentra desactivada.",
+            codigo=CodigoErrorAdministrativo.UBICACION_YA_INACTIVA,
+        )
+
+    df_ubicaciones_cand.loc[mascara_ubic, "Activo"] = "No"
+
+    hojas_candidatas = {
+        HOJA_PRODUCTOS: df_productos_cand,
+        HOJA_CATEGORIAS: df_categorias_cand,
+        HOJA_UBICACIONES: df_ubicaciones_cand,
+        HOJA_ASIGNACIONES: df_asignaciones_cand,
+    }
+
+    try:
+        inventario_validado = construir_inventario_datos(hojas_candidatas)
+    except ErrorInventario as exc_inv:
+        raise _convertir_error_motor_inventario(exc_inv) from exc_inv
+
+    ubicaciones_desactivadas_nuevas = (
+        (*espacio.ubicaciones_desactivadas, ubic_id_limpio)
+        if ubic_id_limpio not in espacio.ubicaciones_desactivadas
+        else espacio.ubicaciones_desactivadas
+    )
+    etiqueta_actual = formatear_ubicacion_fisica(fila_actual)
+    operacion = OperacionLocalInventario(
+        tipo_operacion="DESACTIVAR_UBICACION",
+        codigo_producto=ubic_id_limpio,
+        nombre=etiqueta_actual,
+        categoria_id="",
+        descripcion="",
+        asignaciones=(),
+        realizada_en_epoch=sesion.ultima_actividad_epoch,
+        detalles_operacion={
+            "ubicacion_id": ubic_id_limpio,
+            "activo": "No",
+        },
+    )
+    historial_nuevo = (*espacio.historial_operaciones_locales, operacion)
+
+    es_demo_cand = espacio.es_copia_demostrativa or contiene_datos_demostrativos(inventario_validado)
+    espacio_candidato = EspacioTrabajoAdminInventario(
+        inventario_original=espacio.inventario_original,
+        inventario_trabajo=inventario_validado,
+        sha_base_remoto=espacio.sha_base_remoto,
+        origen_remoto_confirmado=espacio.origen_remoto_confirmado,
+        usuario_propietario=espacio.usuario_propietario,
+        id_sesion_propietaria=espacio.id_sesion_propietaria,
+        creado_en_epoch=espacio.creado_en_epoch,
+        actualizado_en_epoch=sesion.ultima_actividad_epoch,
+        codigos_productos_creados=espacio.codigos_productos_creados,
+        codigos_productos_editados=espacio.codigos_productos_editados,
+        categorias_creadas=espacio.categorias_creadas,
+        categorias_editadas=espacio.categorias_editadas,
+        ubicaciones_creadas=espacio.ubicaciones_creadas,
+        ubicaciones_editadas=espacio.ubicaciones_editadas,
+        ubicaciones_desactivadas=ubicaciones_desactivadas_nuevas,
+        historial_operaciones_locales=historial_nuevo,
+        es_copia_demostrativa=es_demo_cand,
+        inicializacion_oficial_autorizada=espacio.inicializacion_oficial_autorizada and not es_demo_cand,
+    )
+
+    if _sincronizar_borrador and isinstance(estado, MutableMapping):
+        _sincronizar_borrador_automatico_en_sesion(
+            estado,
+            espacio_candidato,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+            ahora_epoch=ahora_epoch,
+        )
+        sesion_post = estado.get(autenticacion.CLAVE_SESION_ADMIN)
+        if isinstance(sesion_post, EstadoSesionAdmin):
+            sesion = sesion_post
+    elif _registrar_actividad and isinstance(estado, MutableMapping):
+        sesion = registrar_actividad_administrativa(
+            estado,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+            ahora_epoch=ahora_epoch,
+        )
+
+    espacio.inventario_trabajo = inventario_validado
+    espacio.ubicaciones_desactivadas = ubicaciones_desactivadas_nuevas
+    espacio.historial_operaciones_locales = historial_nuevo
+    espacio.actualizado_en_epoch = sesion.ultima_actividad_epoch
+    espacio.es_copia_demostrativa = es_demo_cand
+    espacio.inicializacion_oficial_autorizada = (
+        espacio.inicializacion_oficial_autorizada and not es_demo_cand
+    )
+
+    if _publicar_en_estado and isinstance(estado, MutableMapping):
+        estado[CLAVE_ESPACIO_TRABAJO_ADMIN] = espacio
+
+    ubicacion_detalle = consultar_ubicacion_administrativa_por_id(
+        estado,
+        ubic_id_limpio,
+        espacio_trabajo=espacio,
+        contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
+        ahora_epoch=ahora_epoch,
+        registrar_actividad=False,
+    )
+    return ResultadoOperacionUbicacionAdmin(
+        exito=True,
+        estado=EstadoInventarioAdmin.MODIFICACION_LOCAL_VALIDA,
+        mensaje_usuario=MENSAJE_DESACTIVACION_UBICACION_LOCAL_EXITOSA,
+        ubicacion_id=ubic_id_limpio,
+        ubicacion=ubicacion_detalle,
+        espacio_trabajo=espacio,
+        sha_base_remoto=espacio.sha_base_remoto,
+        tiene_cambios_pendientes=espacio.tiene_cambios_locales_pendientes,
+        confirmado_en_github=False,
+        es_cambio_local_temporal=True,
     )
 
 
@@ -1509,6 +3056,11 @@ def crear_producto_local(
         actualizado_en_epoch=sesion.ultima_actividad_epoch,
         codigos_productos_creados=codigos_creados_nuevos,
         codigos_productos_editados=espacio.codigos_productos_editados,
+        categorias_creadas=espacio.categorias_creadas,
+        categorias_editadas=espacio.categorias_editadas,
+        ubicaciones_creadas=espacio.ubicaciones_creadas,
+        ubicaciones_editadas=espacio.ubicaciones_editadas,
+        ubicaciones_desactivadas=espacio.ubicaciones_desactivadas,
         historial_operaciones_locales=historial_nuevo,
         es_copia_demostrativa=es_demo_cand,
         inicializacion_oficial_autorizada=espacio.inicializacion_oficial_autorizada and not es_demo_cand,
@@ -1764,6 +3316,11 @@ def editar_producto_local(
         actualizado_en_epoch=sesion.ultima_actividad_epoch,
         codigos_productos_creados=espacio.codigos_productos_creados,
         codigos_productos_editados=codigos_editados_nuevos,
+        categorias_creadas=espacio.categorias_creadas,
+        categorias_editadas=espacio.categorias_editadas,
+        ubicaciones_creadas=espacio.ubicaciones_creadas,
+        ubicaciones_editadas=espacio.ubicaciones_editadas,
+        ubicaciones_desactivadas=espacio.ubicaciones_desactivadas,
         historial_operaciones_locales=historial_nuevo,
         es_copia_demostrativa=es_demo_cand,
         inicializacion_oficial_autorizada=espacio.inicializacion_oficial_autorizada and not es_demo_cand,
@@ -2415,6 +3972,86 @@ def restaurar_borrador_en_espacio_trabajo_admin(
                         categoria_id=cat_op,
                         descripcion=desc_op,
                         asignaciones=asig_op,
+                        espacio_trabajo=espacio_preparacion,
+                        contexto_dispositivo=contexto_dispositivo,
+                        reloj=reloj,
+                        ahora_epoch=ahora_epoch,
+                        _sincronizar_borrador=False,
+                        _publicar_en_estado=False,
+                        _registrar_actividad=False,
+                    )
+                elif tipo_op == "CREAR_CATEGORIA":
+                    detalles_op = op_raw.get("detalles_operacion")
+                    det_map = detalles_op if isinstance(detalles_op, Mapping) else {}
+                    crear_categoria_local(
+                        estado,
+                        categoria_id=det_map.get("categoria_id", cod_op),
+                        nombre_categoria=det_map.get("nombre_categoria", nom_op),
+                        espacio_trabajo=espacio_preparacion,
+                        contexto_dispositivo=contexto_dispositivo,
+                        reloj=reloj,
+                        ahora_epoch=ahora_epoch,
+                        _sincronizar_borrador=False,
+                        _publicar_en_estado=False,
+                        _registrar_actividad=False,
+                    )
+                elif tipo_op == "RENOMBRAR_CATEGORIA":
+                    detalles_op = op_raw.get("detalles_operacion")
+                    det_map = detalles_op if isinstance(detalles_op, Mapping) else {}
+                    renombrar_categoria_local(
+                        estado,
+                        categoria_id=det_map.get("categoria_id", cod_op),
+                        nuevo_nombre_categoria=det_map.get("nuevo_nombre_categoria", nom_op),
+                        espacio_trabajo=espacio_preparacion,
+                        contexto_dispositivo=contexto_dispositivo,
+                        reloj=reloj,
+                        ahora_epoch=ahora_epoch,
+                        _sincronizar_borrador=False,
+                        _publicar_en_estado=False,
+                        _registrar_actividad=False,
+                    )
+                elif tipo_op == "CREAR_UBICACION":
+                    detalles_op = op_raw.get("detalles_operacion")
+                    det_map = detalles_op if isinstance(detalles_op, Mapping) else {}
+                    crear_ubicacion_local(
+                        estado,
+                        ubicacion_id=det_map.get("ubicacion_id", cod_op),
+                        rack=det_map.get("rack"),
+                        columna=det_map.get("columna"),
+                        nivel=det_map.get("nivel"),
+                        posicion=det_map.get("posicion"),
+                        espacio_trabajo=espacio_preparacion,
+                        contexto_dispositivo=contexto_dispositivo,
+                        reloj=reloj,
+                        ahora_epoch=ahora_epoch,
+                        _sincronizar_borrador=False,
+                        _publicar_en_estado=False,
+                        _registrar_actividad=False,
+                    )
+                elif tipo_op == "EDITAR_UBICACION":
+                    detalles_op = op_raw.get("detalles_operacion")
+                    det_map = detalles_op if isinstance(detalles_op, Mapping) else {}
+                    editar_ubicacion_local(
+                        estado,
+                        ubicacion_id=det_map.get("ubicacion_id", cod_op),
+                        rack=det_map.get("rack"),
+                        columna=det_map.get("columna"),
+                        nivel=det_map.get("nivel"),
+                        posicion=det_map.get("posicion"),
+                        espacio_trabajo=espacio_preparacion,
+                        contexto_dispositivo=contexto_dispositivo,
+                        reloj=reloj,
+                        ahora_epoch=ahora_epoch,
+                        _sincronizar_borrador=False,
+                        _publicar_en_estado=False,
+                        _registrar_actividad=False,
+                    )
+                elif tipo_op == "DESACTIVAR_UBICACION":
+                    detalles_op = op_raw.get("detalles_operacion")
+                    det_map = detalles_op if isinstance(detalles_op, Mapping) else {}
+                    desactivar_ubicacion_local(
+                        estado,
+                        ubicacion_id=det_map.get("ubicacion_id", cod_op),
                         espacio_trabajo=espacio_preparacion,
                         contexto_dispositivo=contexto_dispositivo,
                         reloj=reloj,

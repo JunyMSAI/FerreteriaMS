@@ -34,6 +34,7 @@ import administracion_productos  # noqa: E402
 import autenticacion  # noqa: E402
 import github_inventario  # noqa: E402
 from administracion_productos import (  # noqa: E402
+    CLAVE_CATEGORIA_ADMIN_SELECCIONADA,
     CLAVE_ESPACIO_TRABAJO_ADMIN,
     CLAVE_FORMULARIO_BORRADOR_ADMIN,
     CLAVE_MENSAJE_OPERACION_ADMIN,
@@ -41,12 +42,18 @@ from administracion_productos import (  # noqa: E402
     CLAVE_PRODUCTO_ADMIN_SELECCIONADO,
     CLAVE_RESULTADO_CARGA_ADMIN,
     CLAVE_TERMINO_FILTRO_ADMIN,
+    CLAVE_UBICACION_ADMIN_SELECCIONADA,
     MENSAJE_CAMBIO_PRINCIPAL_LOCAL_EXITOSO,
     MENSAJE_CAMBIOS_LOCALES_DESCARTADOS,
     MENSAJE_CATALOGO_PREDEFINIDO_NO_EDITABLE,
+    MENSAJE_CREACION_CATEGORIA_LOCAL_EXITOSA,
     MENSAJE_CREACION_LOCAL_EXITOSA,
+    MENSAJE_CREACION_UBICACION_LOCAL_EXITOSA,
     MENSAJE_DATOS_REMOTOS_INVALIDOS_ADMIN,
+    MENSAJE_DESACTIVACION_UBICACION_LOCAL_EXITOSA,
+    MENSAJE_EDICION_CATEGORIA_LOCAL_EXITOSA,
     MENSAJE_EDICION_LOCAL_EXITOSA,
+    MENSAJE_EDICION_UBICACION_LOCAL_EXITOSA,
     MENSAJE_ELIMINACION_SECUNDARIA_LOCAL_EXITOSA,
     MENSAJE_ERROR_CONEXION_ADMIN,
     MENSAJE_INVENTARIO_DISPONIBLE_EDICION_LOCAL,
@@ -60,15 +67,26 @@ from administracion_productos import (  # noqa: E402
     ModoVistaAdmin,
     PaquetePublicacionPendienteP10,
     ResultadoCargaInventarioAdmin,
+    ResultadoOperacionCategoriaAdmin,
     ResultadoOperacionProductoAdmin,
+    ResultadoOperacionUbicacionAdmin,
     cambiar_ubicacion_principal_local,
     cargar_inventario_administrativo_en_sesion,
+    consultar_categoria_administrativa_por_id,
+    consultar_categorias_administrativas,
     consultar_producto_administrativo_por_codigo,
     consultar_productos_administrativos,
+    consultar_ubicacion_administrativa_por_id,
+    consultar_ubicaciones_administrativas,
     contiene_datos_demostrativos,
+    crear_categoria_local,
     crear_producto_local,
+    crear_ubicacion_local,
+    desactivar_ubicacion_local,
     descartar_cambios_locales_en_sesion,
+    editar_categoria_local,
     editar_producto_local,
+    editar_ubicacion_local,
     eliminar_asignacion_ubicacion_local,
     escapar_texto_presentacion_segura,
     guardar_borrador_formulario_admin,
@@ -78,6 +96,7 @@ from administracion_productos import (  # noqa: E402
     obtener_catalogo_ubicaciones_admin,
     preparar_paquete_publicacion_futura_p10,
     rechazar_modificacion_catalogo_predefinido,
+    renombrar_categoria_local,
     restaurar_borrador_en_espacio_trabajo_admin,
 )
 from autenticacion import (  # noqa: E402
@@ -262,9 +281,16 @@ TEXTO_BOTON_ADMIN_CARGAR_INVENTARIO: str = "📥 Cargar / recargar inventario"
 TEXTO_BOTON_ADMIN_ABRIR_CONSULTA: str = "📋 Consultar inventario"
 TEXTO_BOTON_ADMIN_ABRIR_CREAR: str = "➕ Crear producto"
 TEXTO_BOTON_ADMIN_ABRIR_EDITAR: str = "✏️ Editar producto y ubicaciones"
+TEXTO_BOTON_ADMIN_ABRIR_CATEGORIAS: str = "🗂️ Administrar categorías"
+TEXTO_BOTON_ADMIN_ABRIR_UBICACIONES: str = "📍 Administrar ubicaciones"
 TEXTO_BOTON_ADMIN_DESCARTAR_CAMBIOS: str = "↩️ Descartar cambios locales"
 TEXTO_BOTON_ADMIN_CONFIRMAR_CREAR: str = "✅ Validar y registrar en copia local"
 TEXTO_BOTON_ADMIN_CONFIRMAR_EDITAR: str = "💾 Validar y aplicar cambios en copia local"
+TEXTO_BOTON_ADMIN_CONFIRMAR_CREAR_CATEGORIA: str = "✅ Crear categoría en copia local"
+TEXTO_BOTON_ADMIN_CONFIRMAR_RENOMBRAR_CATEGORIA: str = "💾 Renombrar categoría en copia local"
+TEXTO_BOTON_ADMIN_CONFIRMAR_CREAR_UBICACION: str = "✅ Crear ubicación física en copia local"
+TEXTO_BOTON_ADMIN_CONFIRMAR_EDITAR_UBICACION: str = "💾 Guardar cambios de ubicación física"
+TEXTO_BOTON_ADMIN_DESACTIVAR_UBICACION: str = "🚫 Desactivar ubicación física"
 TEXTO_BOTON_ADMIN_GUARDAR_BORRADOR_FORM: str = "📝 Guardar borrador de formulario"
 TEXTO_BOTON_ADMIN_PUBLICAR_GITHUB: str = "☁️ Guardar y publicar cambios en GitHub"
 TEXTO_BOTON_ADMIN_INICIALIZAR_GITHUB: str = "☁️ Inicializar inventario maestro en GitHub"
@@ -376,6 +402,8 @@ def inicializar_estado_sesion(
         CLAVE_RESULTADO_CARGA_ADMIN: None,
         CLAVE_MODO_VISTA_ADMIN: ModoVistaAdmin.INICIAL.value,
         CLAVE_PRODUCTO_ADMIN_SELECCIONADO: None,
+        CLAVE_CATEGORIA_ADMIN_SELECCIONADA: None,
+        CLAVE_UBICACION_ADMIN_SELECCIONADA: None,
         CLAVE_TERMINO_FILTRO_ADMIN: "",
         CLAVE_MENSAJE_OPERACION_ADMIN: None,
         CLAVE_FORMULARIO_BORRADOR_ADMIN: None,
@@ -521,6 +549,8 @@ def ejecutar_restauracion_borrador_en_sesion(
                             ModoVistaAdmin.CONSULTA.value,
                             ModoVistaAdmin.CREAR_PRODUCTO.value,
                             ModoVistaAdmin.EDITAR_PRODUCTO.value,
+                            ModoVistaAdmin.CATEGORIAS.value,
+                            ModoVistaAdmin.UBICACIONES.value,
                         }:
                             modo_restaurado = modo_candidato
                         campos_form = form_activo.get("campos")
@@ -530,6 +560,16 @@ def ejecutar_restauracion_borrador_en_sesion(
                             ).strip()
                             if cod_form:
                                 destino[CLAVE_PRODUCTO_ADMIN_SELECCIONADO] = cod_form
+                            cat_form = str(
+                                campos_form.get("categoria_id", "")
+                            ).strip()
+                            if cat_form:
+                                destino[CLAVE_CATEGORIA_ADMIN_SELECCIONADA] = cat_form
+                            ubic_form = str(
+                                campos_form.get("ubicacion_id", "")
+                            ).strip()
+                            if ubic_form:
+                                destino[CLAVE_UBICACION_ADMIN_SELECCIONADA] = ubic_form
                 if modo_restaurado is not None:
                     destino[CLAVE_MODO_VISTA_ADMIN] = modo_restaurado
                 else:
@@ -595,6 +635,8 @@ def seleccionar_modo_vista_admin_en_sesion(
     estado: MutableMapping[str, Any] | None = None,
     *,
     codigo_producto_editar: str | None = None,
+    categoria_id_editar: str | None = None,
+    ubicacion_id_editar: str | None = None,
 ) -> ModoVistaAdmin:
     """Cambia la subvista activa dentro del panel administrativo de Productos."""
     destino = inicializar_estado_sesion(estado)
@@ -612,6 +654,10 @@ def seleccionar_modo_vista_admin_en_sesion(
     destino[CLAVE_MODO_VISTA_ADMIN] = modo_enum.value
     if codigo_producto_editar is not None and isinstance(codigo_producto_editar, str):
         destino[CLAVE_PRODUCTO_ADMIN_SELECCIONADO] = codigo_producto_editar.strip() or None
+    if categoria_id_editar is not None and isinstance(categoria_id_editar, str):
+        destino[CLAVE_CATEGORIA_ADMIN_SELECCIONADA] = categoria_id_editar.strip() or None
+    if ubicacion_id_editar is not None and isinstance(ubicacion_id_editar, str):
+        destino[CLAVE_UBICACION_ADMIN_SELECCIONADA] = ubicacion_id_editar.strip() or None
     return modo_enum
 
 
@@ -891,6 +937,320 @@ def ejecutar_eliminacion_ubicacion_secundaria_en_sesion(
             "mensaje": exc_auth.mensaje,
         }
         return ResultadoOperacionProductoAdmin(
+            exito=False,
+            estado=EstadoInventarioAdmin.SESION_ADMINISTRATIVA_EXPIRADA
+            if exc_auth.codigo == CodigoResultadoAutenticacion.SESION_EXPIRADA
+            else EstadoInventarioAdmin.ERROR_VALIDACION_ADMINISTRATIVA,
+            mensaje_usuario=exc_auth.mensaje,
+            codigo_error=CodigoErrorAdministrativo.SESION_EXPIRADA
+            if exc_auth.codigo == CodigoResultadoAutenticacion.SESION_EXPIRADA
+            else CodigoErrorAdministrativo.AUTORIZACION_INVALIDA,
+            confirmado_en_github=False,
+            es_cambio_local_temporal=True,
+        )
+
+
+def ejecutar_creacion_categoria_en_sesion(
+    *,
+    categoria_id: Any,
+    nombre_categoria: Any,
+    estado: MutableMapping[str, Any] | None = None,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+) -> ResultadoOperacionCategoriaAdmin:
+    """Ejecuta y valida el alta local de una categoría actualizando el aviso administrativo en sesión."""
+    destino = inicializar_estado_sesion(estado)
+    try:
+        res = crear_categoria_local(
+            destino,
+            categoria_id=categoria_id,
+            nombre_categoria=nombre_categoria,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+        )
+        destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
+            "tipo": "success",
+            "codigo": res.estado.value,
+            "mensaje": res.mensaje_usuario,
+        }
+        destino[CLAVE_CATEGORIA_ADMIN_SELECCIONADA] = res.categoria_id
+        return res
+    except ErrorAdministracionInventario as exc_admin:
+        destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
+            "tipo": "error",
+            "codigo": exc_admin.codigo.value,
+            "mensaje": exc_admin.mensaje,
+        }
+        return ResultadoOperacionCategoriaAdmin(
+            exito=False,
+            estado=exc_admin.estado,
+            mensaje_usuario=exc_admin.mensaje,
+            codigo_error=exc_admin.codigo,
+            confirmado_en_github=False,
+            es_cambio_local_temporal=True,
+        )
+    except ErrorAutorizacionAdmin as exc_auth:
+        destino[CLAVE_MENSAJE_AUTH_ADMIN] = {
+            "tipo": "error",
+            "codigo": exc_auth.codigo.value,
+            "mensaje": exc_auth.mensaje,
+        }
+        return ResultadoOperacionCategoriaAdmin(
+            exito=False,
+            estado=EstadoInventarioAdmin.SESION_ADMINISTRATIVA_EXPIRADA
+            if exc_auth.codigo == CodigoResultadoAutenticacion.SESION_EXPIRADA
+            else EstadoInventarioAdmin.ERROR_VALIDACION_ADMINISTRATIVA,
+            mensaje_usuario=exc_auth.mensaje,
+            codigo_error=CodigoErrorAdministrativo.SESION_EXPIRADA
+            if exc_auth.codigo == CodigoResultadoAutenticacion.SESION_EXPIRADA
+            else CodigoErrorAdministrativo.AUTORIZACION_INVALIDA,
+            confirmado_en_github=False,
+            es_cambio_local_temporal=True,
+        )
+
+
+def ejecutar_renombrado_categoria_en_sesion(
+    *,
+    categoria_id: Any,
+    nuevo_nombre_categoria: Any = None,
+    nombre_categoria: Any = None,
+    nuevo_categoria_id: Any = None,
+    estado: MutableMapping[str, Any] | None = None,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+) -> ResultadoOperacionCategoriaAdmin:
+    """Ejecuta y valida el renombrado local de una categoría manteniendo `Categoria_ID` inmutable."""
+    destino = inicializar_estado_sesion(estado)
+    try:
+        res = renombrar_categoria_local(
+            destino,
+            categoria_id=categoria_id,
+            nuevo_nombre_categoria=nuevo_nombre_categoria,
+            nombre_categoria=nombre_categoria,
+            nuevo_categoria_id=nuevo_categoria_id,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+        )
+        destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
+            "tipo": "success",
+            "codigo": res.estado.value,
+            "mensaje": res.mensaje_usuario,
+        }
+        destino[CLAVE_CATEGORIA_ADMIN_SELECCIONADA] = res.categoria_id
+        return res
+    except ErrorAdministracionInventario as exc_admin:
+        destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
+            "tipo": "error",
+            "codigo": exc_admin.codigo.value,
+            "mensaje": exc_admin.mensaje,
+        }
+        return ResultadoOperacionCategoriaAdmin(
+            exito=False,
+            estado=exc_admin.estado,
+            mensaje_usuario=exc_admin.mensaje,
+            codigo_error=exc_admin.codigo,
+            confirmado_en_github=False,
+            es_cambio_local_temporal=True,
+        )
+    except ErrorAutorizacionAdmin as exc_auth:
+        destino[CLAVE_MENSAJE_AUTH_ADMIN] = {
+            "tipo": "error",
+            "codigo": exc_auth.codigo.value,
+            "mensaje": exc_auth.mensaje,
+        }
+        return ResultadoOperacionCategoriaAdmin(
+            exito=False,
+            estado=EstadoInventarioAdmin.SESION_ADMINISTRATIVA_EXPIRADA
+            if exc_auth.codigo == CodigoResultadoAutenticacion.SESION_EXPIRADA
+            else EstadoInventarioAdmin.ERROR_VALIDACION_ADMINISTRATIVA,
+            mensaje_usuario=exc_auth.mensaje,
+            codigo_error=CodigoErrorAdministrativo.SESION_EXPIRADA
+            if exc_auth.codigo == CodigoResultadoAutenticacion.SESION_EXPIRADA
+            else CodigoErrorAdministrativo.AUTORIZACION_INVALIDA,
+            confirmado_en_github=False,
+            es_cambio_local_temporal=True,
+        )
+
+
+ejecutar_edicion_categoria_en_sesion = ejecutar_renombrado_categoria_en_sesion
+
+
+def ejecutar_creacion_ubicacion_en_sesion(
+    *,
+    ubicacion_id: Any,
+    rack: Any,
+    columna: Any,
+    nivel: Any,
+    posicion: Any,
+    estado: MutableMapping[str, Any] | None = None,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+) -> ResultadoOperacionUbicacionAdmin:
+    """Ejecuta y valida el alta local de una ubicación física actualizando el aviso administrativo."""
+    destino = inicializar_estado_sesion(estado)
+    try:
+        res = crear_ubicacion_local(
+            destino,
+            ubicacion_id=ubicacion_id,
+            rack=rack,
+            columna=columna,
+            nivel=nivel,
+            posicion=posicion,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+        )
+        destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
+            "tipo": "success",
+            "codigo": res.estado.value,
+            "mensaje": res.mensaje_usuario,
+        }
+        destino[CLAVE_UBICACION_ADMIN_SELECCIONADA] = res.ubicacion_id
+        return res
+    except ErrorAdministracionInventario as exc_admin:
+        destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
+            "tipo": "error",
+            "codigo": exc_admin.codigo.value,
+            "mensaje": exc_admin.mensaje,
+        }
+        return ResultadoOperacionUbicacionAdmin(
+            exito=False,
+            estado=exc_admin.estado,
+            mensaje_usuario=exc_admin.mensaje,
+            codigo_error=exc_admin.codigo,
+            confirmado_en_github=False,
+            es_cambio_local_temporal=True,
+        )
+    except ErrorAutorizacionAdmin as exc_auth:
+        destino[CLAVE_MENSAJE_AUTH_ADMIN] = {
+            "tipo": "error",
+            "codigo": exc_auth.codigo.value,
+            "mensaje": exc_auth.mensaje,
+        }
+        return ResultadoOperacionUbicacionAdmin(
+            exito=False,
+            estado=EstadoInventarioAdmin.SESION_ADMINISTRATIVA_EXPIRADA
+            if exc_auth.codigo == CodigoResultadoAutenticacion.SESION_EXPIRADA
+            else EstadoInventarioAdmin.ERROR_VALIDACION_ADMINISTRATIVA,
+            mensaje_usuario=exc_auth.mensaje,
+            codigo_error=CodigoErrorAdministrativo.SESION_EXPIRADA
+            if exc_auth.codigo == CodigoResultadoAutenticacion.SESION_EXPIRADA
+            else CodigoErrorAdministrativo.AUTORIZACION_INVALIDA,
+            confirmado_en_github=False,
+            es_cambio_local_temporal=True,
+        )
+
+
+def ejecutar_edicion_ubicacion_en_sesion(
+    *,
+    ubicacion_id: Any,
+    rack: Any = None,
+    columna: Any = None,
+    nivel: Any = None,
+    posicion: Any = None,
+    nuevo_ubicacion_id: Any = None,
+    estado: MutableMapping[str, Any] | None = None,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+) -> ResultadoOperacionUbicacionAdmin:
+    """Ejecuta y valida la edición local de coordenadas físicas cuando la ubicación no tiene productos."""
+    destino = inicializar_estado_sesion(estado)
+    try:
+        res = editar_ubicacion_local(
+            destino,
+            ubicacion_id=ubicacion_id,
+            rack=rack,
+            columna=columna,
+            nivel=nivel,
+            posicion=posicion,
+            nuevo_ubicacion_id=nuevo_ubicacion_id,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+        )
+        destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
+            "tipo": "success",
+            "codigo": res.estado.value,
+            "mensaje": res.mensaje_usuario,
+        }
+        destino[CLAVE_UBICACION_ADMIN_SELECCIONADA] = res.ubicacion_id
+        return res
+    except ErrorAdministracionInventario as exc_admin:
+        destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
+            "tipo": "error",
+            "codigo": exc_admin.codigo.value,
+            "mensaje": exc_admin.mensaje,
+        }
+        return ResultadoOperacionUbicacionAdmin(
+            exito=False,
+            estado=exc_admin.estado,
+            mensaje_usuario=exc_admin.mensaje,
+            codigo_error=exc_admin.codigo,
+            confirmado_en_github=False,
+            es_cambio_local_temporal=True,
+        )
+    except ErrorAutorizacionAdmin as exc_auth:
+        destino[CLAVE_MENSAJE_AUTH_ADMIN] = {
+            "tipo": "error",
+            "codigo": exc_auth.codigo.value,
+            "mensaje": exc_auth.mensaje,
+        }
+        return ResultadoOperacionUbicacionAdmin(
+            exito=False,
+            estado=EstadoInventarioAdmin.SESION_ADMINISTRATIVA_EXPIRADA
+            if exc_auth.codigo == CodigoResultadoAutenticacion.SESION_EXPIRADA
+            else EstadoInventarioAdmin.ERROR_VALIDACION_ADMINISTRATIVA,
+            mensaje_usuario=exc_auth.mensaje,
+            codigo_error=CodigoErrorAdministrativo.SESION_EXPIRADA
+            if exc_auth.codigo == CodigoResultadoAutenticacion.SESION_EXPIRADA
+            else CodigoErrorAdministrativo.AUTORIZACION_INVALIDA,
+            confirmado_en_github=False,
+            es_cambio_local_temporal=True,
+        )
+
+
+def ejecutar_desactivacion_ubicacion_en_sesion(
+    *,
+    ubicacion_id: Any,
+    estado: MutableMapping[str, Any] | None = None,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+) -> ResultadoOperacionUbicacionAdmin:
+    """Desactiva localmente una ubicación física sin productos asociados (`Activo = 'No'`)."""
+    destino = inicializar_estado_sesion(estado)
+    try:
+        res = desactivar_ubicacion_local(
+            destino,
+            ubicacion_id=ubicacion_id,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+        )
+        destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
+            "tipo": "success",
+            "codigo": res.estado.value,
+            "mensaje": res.mensaje_usuario,
+        }
+        destino[CLAVE_UBICACION_ADMIN_SELECCIONADA] = res.ubicacion_id
+        return res
+    except ErrorAdministracionInventario as exc_admin:
+        destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
+            "tipo": "error",
+            "codigo": exc_admin.codigo.value,
+            "mensaje": exc_admin.mensaje,
+        }
+        return ResultadoOperacionUbicacionAdmin(
+            exito=False,
+            estado=exc_admin.estado,
+            mensaje_usuario=exc_admin.mensaje,
+            codigo_error=exc_admin.codigo,
+            confirmado_en_github=False,
+            es_cambio_local_temporal=True,
+        )
+    except ErrorAutorizacionAdmin as exc_auth:
+        destino[CLAVE_MENSAJE_AUTH_ADMIN] = {
+            "tipo": "error",
+            "codigo": exc_auth.codigo.value,
+            "mensaje": exc_auth.mensaje,
+        }
+        return ResultadoOperacionUbicacionAdmin(
             exito=False,
             estado=EstadoInventarioAdmin.SESION_ADMINISTRATIVA_EXPIRADA
             if exc_auth.codigo == CodigoResultadoAutenticacion.SESION_EXPIRADA
@@ -2166,6 +2526,344 @@ def _renderizar_formulario_editar_producto_admin(
                     st.rerun()
 
 
+def _renderizar_vista_categorias_admin(
+    contexto_dispositivo: ContextoDispositivo,
+) -> None:
+    """Renderiza el panel administrativo de consulta, creación y renombrado de categorías (P14)."""
+    st.markdown("#### 🗂️ Administración del catálogo de categorías")
+    st.caption(
+        "Crea nuevas categorías o renombra las existentes conservando su `Categoria_ID` inmutable. "
+        "La desactivación o eliminación de categorías no forma parte de esta etapa."
+    )
+
+    try:
+        categorias = consultar_categorias_administrativas(
+            st.session_state,
+            contexto_dispositivo=contexto_dispositivo,
+            registrar_actividad=False,
+        )
+    except (ErrorAdministracionInventario, ErrorAutorizacionAdmin) as exc:
+        st.error(str(exc))
+        return
+
+    col_crear_cat, col_renombrar_cat = st.columns(2)
+    with col_crear_cat:
+        with st.container(border=True):
+            st.markdown("##### ➕ Crear nueva categoría")
+            nueva_cat_id = st.text_input(
+                label="Identificador único `Categoria_ID` (obligatorio)",
+                placeholder="Ejemplo: CAT-099",
+                key="campo_admin_crear_categoria_id",
+            )
+            nuevo_nom_cat = st.text_input(
+                label="Nombre de la categoría (`Nombre_Categoria`, obligatorio)",
+                placeholder="Ejemplo: Iluminación LED industrial",
+                key="campo_admin_crear_nombre_categoria",
+            )
+            if st.button(
+                TEXTO_BOTON_ADMIN_CONFIRMAR_CREAR_CATEGORIA,
+                key="btn_admin_confirmar_crear_categoria",
+                type="primary",
+                use_container_width=True,
+            ):
+                ejecutar_creacion_categoria_en_sesion(
+                    categoria_id=nueva_cat_id,
+                    nombre_categoria=nuevo_nom_cat,
+                    estado=st.session_state,
+                    contexto_dispositivo=contexto_dispositivo,
+                )
+                st.rerun()
+
+    with col_renombrar_cat:
+        with st.container(border=True):
+            st.markdown("##### ✏️ Renombrar categoría existente")
+            if not categorias:
+                st.info("No existen categorías registradas para renombrar.")
+            else:
+                ids_cat = [str(c["categoria_id"]) for c in categorias]
+                mapa_cat = {str(c["categoria_id"]): c for c in categorias}
+                cat_pre = st.session_state.get(CLAVE_CATEGORIA_ADMIN_SELECCIONADA)
+                idx_cat = (
+                    ids_cat.index(cat_pre)
+                    if isinstance(cat_pre, str) and cat_pre in ids_cat
+                    else 0
+                )
+                cat_sel_id = st.selectbox(
+                    label="Selecciona la categoría a renombrar",
+                    options=ids_cat,
+                    index=idx_cat,
+                    format_func=lambda cid: f"{cid} — {mapa_cat[cid]['nombre_categoria']}",
+                    key="campo_admin_selector_categoria_renombrar",
+                )
+                st.session_state[CLAVE_CATEGORIA_ADMIN_SELECCIONADA] = cat_sel_id
+                cat_actual = mapa_cat[cat_sel_id]
+
+                clave_ctx_cat = "_ferms_admin_editar_contexto_categoria"
+                ctx_cat_actual = (cat_sel_id, str(cat_actual["nombre_categoria"]))
+                if (
+                    st.session_state.get(clave_ctx_cat) != ctx_cat_actual
+                    or "campo_admin_renombrar_nombre_categoria" not in st.session_state
+                ):
+                    st.session_state["campo_admin_renombrar_nombre_categoria"] = str(
+                        cat_actual["nombre_categoria"]
+                    )
+                    st.session_state[clave_ctx_cat] = ctx_cat_actual
+
+                st.markdown(
+                    f"**`Categoria_ID` (inmutable — RF-F-002):** "
+                    f"`{escapar_texto_presentacion_segura(cat_sel_id)}`"
+                )
+                st.caption(
+                    f"Productos asociados: {cat_actual['total_productos_asociados']} "
+                    f"(el nuevo nombre se reflejará automáticamente en todos ellos)."
+                )
+                nombre_cat_editado = st.text_input(
+                    label="Nuevo nombre de la categoría (`Nombre_Categoria`)",
+                    key="campo_admin_renombrar_nombre_categoria",
+                )
+                if st.button(
+                    TEXTO_BOTON_ADMIN_CONFIRMAR_RENOMBRAR_CATEGORIA,
+                    key="btn_admin_confirmar_renombrar_categoria",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    ejecutar_renombrado_categoria_en_sesion(
+                        categoria_id=cat_sel_id,
+                        nuevo_nombre_categoria=nombre_cat_editado,
+                        estado=st.session_state,
+                        contexto_dispositivo=contexto_dispositivo,
+                    )
+                    st.rerun()
+
+    st.markdown(f"##### 📋 Categorías registradas ({len(categorias)})")
+    for cat in categorias:
+        cid_seg = escapar_texto_presentacion_segura(cat["categoria_id"])
+        nom_seg = escapar_texto_presentacion_segura(cat["nombre_categoria"])
+        est_seg = escapar_texto_presentacion_segura(cat["estado_registro_texto"])
+        total_asoc = int(cat["total_productos_asociados"])
+        with st.container(border=True):
+            col_c1, col_c2 = st.columns([3, 1.5])
+            with col_c1:
+                st.markdown(f"**{nom_seg}** (`{cid_seg}`)")
+                st.caption(f"Estado del registro: {est_seg}")
+            with col_c2:
+                st.markdown(f"📦 **{total_asoc} producto(s) asociado(s)**")
+
+
+def _renderizar_vista_ubicaciones_admin(
+    contexto_dispositivo: ContextoDispositivo,
+) -> None:
+    """Renderiza el panel administrativo de consulta, alta, edición y desactivación de ubicaciones (P14)."""
+    st.markdown("#### 📍 Administración del catálogo de ubicaciones físicas")
+    st.caption(
+        "Crea nuevas ubicaciones físicas, o edita y desactiva aquellas que no tengan productos asociados "
+        "en la hoja `Asignaciones`. El identificador `Ubicacion_ID` permanece inmutable."
+    )
+
+    try:
+        ubicaciones = consultar_ubicaciones_administrativas(
+            st.session_state,
+            incluir_inactivas=True,
+            contexto_dispositivo=contexto_dispositivo,
+            registrar_actividad=False,
+        )
+    except (ErrorAdministracionInventario, ErrorAutorizacionAdmin) as exc:
+        st.error(str(exc))
+        return
+
+    col_crear_ub, col_editar_ub = st.columns(2)
+    with col_crear_ub:
+        with st.container(border=True):
+            st.markdown("##### ➕ Crear nueva ubicación física")
+            nuevo_ubic_id = st.text_input(
+                label="Identificador único `Ubicacion_ID` (obligatorio)",
+                placeholder="Ejemplo: U-099",
+                key="campo_admin_crear_ubicacion_id",
+            )
+            col_r, col_c = st.columns(2)
+            with col_r:
+                nuevo_rack = st.text_input(
+                    label="Rack (obligatorio)",
+                    placeholder="Ej.: R9",
+                    key="campo_admin_crear_ubicacion_rack",
+                )
+            with col_c:
+                nueva_columna = st.text_input(
+                    label="Columna (obligatorio)",
+                    placeholder="Ej.: C1",
+                    key="campo_admin_crear_ubicacion_columna",
+                )
+            col_n, col_p = st.columns(2)
+            with col_n:
+                nuevo_nivel = st.text_input(
+                    label="Nivel (obligatorio)",
+                    placeholder="Ej.: N1",
+                    key="campo_admin_crear_ubicacion_nivel",
+                )
+            with col_p:
+                nueva_posicion = st.text_input(
+                    label="Posición (obligatorio)",
+                    placeholder="Ej.: P1",
+                    key="campo_admin_crear_ubicacion_posicion",
+                )
+            if st.button(
+                TEXTO_BOTON_ADMIN_CONFIRMAR_CREAR_UBICACION,
+                key="btn_admin_confirmar_crear_ubicacion",
+                type="primary",
+                use_container_width=True,
+            ):
+                ejecutar_creacion_ubicacion_en_sesion(
+                    ubicacion_id=nuevo_ubic_id,
+                    rack=nuevo_rack,
+                    columna=nueva_columna,
+                    nivel=nuevo_nivel,
+                    posicion=nueva_posicion,
+                    estado=st.session_state,
+                    contexto_dispositivo=contexto_dispositivo,
+                )
+                st.rerun()
+
+    with col_editar_ub:
+        with st.container(border=True):
+            st.markdown("##### ✏️ Editar o desactivar ubicación existente")
+            if not ubicaciones:
+                st.info("No existen ubicaciones físicas registradas.")
+            else:
+                ids_ubic = [str(u["ubicacion_id"]) for u in ubicaciones]
+                mapa_ubic = {str(u["ubicacion_id"]): u for u in ubicaciones}
+                ubic_pre = st.session_state.get(CLAVE_UBICACION_ADMIN_SELECCIONADA)
+                idx_ubic = (
+                    ids_ubic.index(ubic_pre)
+                    if isinstance(ubic_pre, str) and ubic_pre in ids_ubic
+                    else 0
+                )
+                ubic_sel_id = st.selectbox(
+                    label="Selecciona la ubicación física",
+                    options=ids_ubic,
+                    index=idx_ubic,
+                    format_func=lambda uid: (
+                        f"{uid} — {mapa_ubic[uid]['etiqueta']} "
+                        f"({'Activa' if mapa_ubic[uid]['es_activa'] else 'Inactiva'})"
+                    ),
+                    key="campo_admin_selector_ubicacion_editar",
+                )
+                st.session_state[CLAVE_UBICACION_ADMIN_SELECCIONADA] = ubic_sel_id
+                ubic_actual = mapa_ubic[ubic_sel_id]
+
+                clave_ctx_ubic = "_ferms_admin_editar_contexto_ubicacion"
+                ctx_ubic_actual = (
+                    ubic_sel_id,
+                    str(ubic_actual["rack"]),
+                    str(ubic_actual["columna"]),
+                    str(ubic_actual["nivel"]),
+                    str(ubic_actual["posicion"]),
+                    str(ubic_actual["activo"]),
+                )
+                claves_ed_ubic = (
+                    "campo_admin_editar_ubicacion_rack",
+                    "campo_admin_editar_ubicacion_columna",
+                    "campo_admin_editar_ubicacion_nivel",
+                    "campo_admin_editar_ubicacion_posicion",
+                )
+                if (
+                    st.session_state.get(clave_ctx_ubic) != ctx_ubic_actual
+                    or not all(k in st.session_state for k in claves_ed_ubic)
+                ):
+                    st.session_state["campo_admin_editar_ubicacion_rack"] = str(
+                        ubic_actual["rack"]
+                    )
+                    st.session_state["campo_admin_editar_ubicacion_columna"] = str(
+                        ubic_actual["columna"]
+                    )
+                    st.session_state["campo_admin_editar_ubicacion_nivel"] = str(
+                        ubic_actual["nivel"]
+                    )
+                    st.session_state["campo_admin_editar_ubicacion_posicion"] = str(
+                        ubic_actual["posicion"]
+                    )
+                    st.session_state[clave_ctx_ubic] = ctx_ubic_actual
+
+                st.markdown(
+                    f"**`Ubicacion_ID` (inmutable — RF-F-005):** "
+                    f"`{escapar_texto_presentacion_segura(ubic_sel_id)}` · "
+                    f"**Estado `Activo`:** `{escapar_texto_presentacion_segura(ubic_actual['activo'])}`"
+                )
+                if int(ubic_actual["total_productos_asociados"]) > 0:
+                    st.warning(ubic_actual["motivo_bloqueo"])
+
+                col_er, col_ec = st.columns(2)
+                with col_er:
+                    rack_ed = st.text_input(
+                        label="Rack",
+                        key="campo_admin_editar_ubicacion_rack",
+                    )
+                with col_ec:
+                    col_ed = st.text_input(
+                        label="Columna",
+                        key="campo_admin_editar_ubicacion_columna",
+                    )
+                col_en, col_ep = st.columns(2)
+                with col_en:
+                    niv_ed = st.text_input(
+                        label="Nivel",
+                        key="campo_admin_editar_ubicacion_nivel",
+                    )
+                with col_ep:
+                    pos_ed = st.text_input(
+                        label="Posición",
+                        key="campo_admin_editar_ubicacion_posicion",
+                    )
+
+                col_btn_ed_u, col_btn_des_u = st.columns(2)
+                with col_btn_ed_u:
+                    if st.button(
+                        TEXTO_BOTON_ADMIN_CONFIRMAR_EDITAR_UBICACION,
+                        key="btn_admin_confirmar_editar_ubicacion",
+                        type="primary",
+                        use_container_width=True,
+                    ):
+                        ejecutar_edicion_ubicacion_en_sesion(
+                            ubicacion_id=ubic_sel_id,
+                            rack=rack_ed,
+                            columna=col_ed,
+                            nivel=niv_ed,
+                            posicion=pos_ed,
+                            estado=st.session_state,
+                            contexto_dispositivo=contexto_dispositivo,
+                        )
+                        st.rerun()
+                with col_btn_des_u:
+                    if st.button(
+                        TEXTO_BOTON_ADMIN_DESACTIVAR_UBICACION,
+                        key="btn_admin_desactivar_ubicacion",
+                        use_container_width=True,
+                    ):
+                        ejecutar_desactivacion_ubicacion_en_sesion(
+                            ubicacion_id=ubic_sel_id,
+                            estado=st.session_state,
+                            contexto_dispositivo=contexto_dispositivo,
+                        )
+                        st.rerun()
+
+    st.markdown(f"##### 📋 Ubicaciones físicas registradas ({len(ubicaciones)})")
+    for ubic in ubicaciones:
+        uid_seg = escapar_texto_presentacion_segura(ubic["ubicacion_id"])
+        etiq_seg = escapar_texto_presentacion_segura(ubic["etiqueta"])
+        est_seg = escapar_texto_presentacion_segura(ubic["estado_registro_texto"])
+        total_asoc = int(ubic["total_productos_asociados"])
+        es_act = bool(ubic["es_activa"])
+        with st.container(border=True):
+            col_u1, col_u2 = st.columns([3, 1.5])
+            with col_u1:
+                insignia_estado = "🟢 Activa" if es_act else "⚪ Inactiva (No asignable)"
+                st.markdown(f"**`{uid_seg}` — {etiq_seg}** · {insignia_estado}")
+                st.caption(f"Estado del registro: {est_seg}")
+            with col_u2:
+                st.markdown(f"📦 **{total_asoc} producto(s) asociado(s)**")
+                if total_asoc > 0:
+                    st.caption("🔒 Reasigna sus productos antes de editar o desactivar.")
+
+
 def _renderizar_seccion_administrativa_productos(
     descargador_remoto: DescargadorRemoto | None = None,
 ) -> None:
@@ -2412,8 +3110,8 @@ def _renderizar_seccion_administrativa_productos(
                     ejecutar_descarte_borrador_en_sesion(st.session_state)
                     st.rerun()
 
-    # Barra de herramientas de gestión administrativa local (Prompt 09)
-    col_cargar, col_consulta, col_crear, col_editar = st.columns(4)
+    # Barra de herramientas de gestión administrativa local (Prompts 09 y 14)
+    col_cargar, col_consulta, col_crear, col_editar, col_categorias, col_ubicaciones = st.columns(6)
     with col_cargar:
         if st.button(
             TEXTO_BOTON_ADMIN_CARGAR_INVENTARIO,
@@ -2466,6 +3164,38 @@ def _renderizar_seccion_administrativa_productos(
         ):
             seleccionar_modo_vista_admin_en_sesion(
                 ModoVistaAdmin.EDITAR_PRODUCTO, st.session_state
+            )
+            if st.session_state.get(CLAVE_ESPACIO_TRABAJO_ADMIN) is None:
+                ejecutar_carga_inventario_admin_en_sesion(
+                    st.session_state,
+                    descargador_remoto=descargador_remoto,
+                    contexto_dispositivo=contexto_dispositivo,
+                )
+            st.rerun()
+    with col_categorias:
+        if st.button(
+            TEXTO_BOTON_ADMIN_ABRIR_CATEGORIAS,
+            key="btn_admin_abrir_categorias",
+            use_container_width=True,
+        ):
+            seleccionar_modo_vista_admin_en_sesion(
+                ModoVistaAdmin.CATEGORIAS, st.session_state
+            )
+            if st.session_state.get(CLAVE_ESPACIO_TRABAJO_ADMIN) is None:
+                ejecutar_carga_inventario_admin_en_sesion(
+                    st.session_state,
+                    descargador_remoto=descargador_remoto,
+                    contexto_dispositivo=contexto_dispositivo,
+                )
+            st.rerun()
+    with col_ubicaciones:
+        if st.button(
+            TEXTO_BOTON_ADMIN_ABRIR_UBICACIONES,
+            key="btn_admin_abrir_ubicaciones",
+            use_container_width=True,
+        ):
+            seleccionar_modo_vista_admin_en_sesion(
+                ModoVistaAdmin.UBICACIONES, st.session_state
             )
             if st.session_state.get(CLAVE_ESPACIO_TRABAJO_ADMIN) is None:
                 ejecutar_carga_inventario_admin_en_sesion(
@@ -2690,6 +3420,10 @@ def _renderizar_seccion_administrativa_productos(
         _renderizar_formulario_crear_producto_admin(contexto_dispositivo)
     elif modo_vista_str == ModoVistaAdmin.EDITAR_PRODUCTO.value:
         _renderizar_formulario_editar_producto_admin(contexto_dispositivo)
+    elif modo_vista_str == ModoVistaAdmin.CATEGORIAS.value:
+        _renderizar_vista_categorias_admin(contexto_dispositivo)
+    elif modo_vista_str == ModoVistaAdmin.UBICACIONES.value:
+        _renderizar_vista_ubicaciones_admin(contexto_dispositivo)
     else:
         _renderizar_vista_consulta_admin(contexto_dispositivo)
 
