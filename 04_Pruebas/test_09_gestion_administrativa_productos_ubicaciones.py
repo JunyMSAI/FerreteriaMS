@@ -1335,8 +1335,75 @@ class PruebasPrompt09GestionAdministrativaProductosUbicaciones(unittest.TestCase
             at.button(key="btn_admin_abrir_editar").click()
             at.run()
             self.assertFalse(at.exception)
+
+            # Cambiar entre dos productos con datos distintos (MAR001 y TOR001) actualiza todos los campos
+            at.selectbox(key="campo_admin_editar_selector_codigo").set_value("MAR001")
+            at.run()
+            self.assertFalse(at.exception)
+            self.assertEqual(
+                at.text_input(key="campo_admin_editar_nombre").value,
+                "Martillo de uña",
+            )
+            self.assertEqual(
+                at.selectbox(key="campo_admin_editar_categoria").value,
+                "CAT01",
+            )
+            self.assertEqual(
+                at.text_area(key="campo_admin_editar_descripcion").value,
+                "[DEMOSTRATIVO] Martillo para carpintería con mango ergonómico.",
+            )
+            self.assertEqual(
+                list(at.multiselect(key="campo_admin_editar_ubicaciones").value),
+                ["U001", "U002"],
+            )
+            self.assertEqual(
+                at.selectbox(key="campo_admin_editar_ubicacion_principal").value,
+                "U001",
+            )
+
+            at.selectbox(key="campo_admin_editar_selector_codigo").set_value("TOR001")
+            at.run()
+            self.assertFalse(at.exception)
+            self.assertEqual(
+                at.text_input(key="campo_admin_editar_nombre").value,
+                "Tornillo galvanizado",
+            )
+            self.assertEqual(
+                at.selectbox(key="campo_admin_editar_categoria").value,
+                "CAT02",
+            )
+            self.assertEqual(
+                at.text_area(key="campo_admin_editar_descripcion").value,
+                "[DEMOSTRATIVO] Tornillo de uso general resistente a la corrosión.",
+            )
+            self.assertEqual(
+                list(at.multiselect(key="campo_admin_editar_ubicaciones").value),
+                ["U002"],
+            )
+            self.assertEqual(
+                at.selectbox(key="campo_admin_editar_ubicacion_principal").value,
+                "U002",
+            )
+
+            # Seleccionar 0099 y editar varios campos sin perder los cambios introducidos entre reruns
+            at.selectbox(key="campo_admin_editar_selector_codigo").set_value("0099")
+            at.run()
+            self.assertFalse(at.exception)
             at.text_input(key="campo_admin_editar_nombre").set_value(
                 "Prensa Sargento Reforzada 6 Pulgadas"
+            )
+            at.run()
+            at.text_area(key="campo_admin_editar_descripcion").set_value(
+                "Prensa reforzada de hierro nodular."
+            )
+            at.run()
+            self.assertEqual(
+                at.text_input(key="campo_admin_editar_nombre").value,
+                "Prensa Sargento Reforzada 6 Pulgadas",
+            )
+            self.assertEqual(
+                at.text_area(key="campo_admin_editar_descripcion").value,
+                "Prensa reforzada de hierro nodular.",
             )
             at.button(key="btn_admin_confirmar_editar_producto").click()
             at.run()
@@ -1348,6 +1415,19 @@ class PruebasPrompt09GestionAdministrativaProductosUbicaciones(unittest.TestCase
                     admin_prod.MENSAJE_EDICION_LOCAL_EXITOSA in m
                     for m in mensajes_exito_ed
                 )
+            )
+            # Verificar que 0099 se actualizó y TOR001 / MAR001 conservaron intactos sus propios datos
+            espacio_ui = at.session_state[CLAVE_ESPACIO_TRABAJO_ADMIN]
+            prod_0099 = espacio_ui.inventario_trabajo.obtener_producto_por_codigo("0099")
+            self.assertIsNotNone(prod_0099)
+            self.assertEqual(prod_0099["nombre"], "Prensa Sargento Reforzada 6 Pulgadas")
+            self.assertEqual(prod_0099["descripcion"], "Prensa reforzada de hierro nodular.")
+            prod_tor = espacio_ui.inventario_trabajo.obtener_producto_por_codigo("TOR001")
+            self.assertIsNotNone(prod_tor)
+            self.assertEqual(prod_tor["nombre"], "Tornillo galvanizado")
+            self.assertEqual(prod_tor["categoria_id"], "CAT02")
+            self.assertEqual(
+                prod_tor["ubicacion_principal"]["ubicacion_id"], "U002"
             )
 
     # ------------------------------------------------------------------

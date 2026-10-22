@@ -2029,6 +2029,43 @@ def _renderizar_formulario_editar_producto_admin(
         opciones_ubic.index(id_prin_actual) if id_prin_actual in opciones_ubic else 0
     )
 
+    valor_nombre_actual = str(prod_actual["nombre"])
+    valor_categoria_actual = opciones_cat[indice_cat] if opciones_cat else None
+    valor_descripcion_actual = str(prod_actual.get("descripcion", ""))
+    valor_ubicaciones_actuales = list(ids_todas_actuales)
+    valor_principal_actual = opciones_ubic[indice_prin] if opciones_ubic else None
+
+    clave_contexto_edicion = "_ferms_admin_editar_contexto_producto"
+    contexto_producto_actual = (
+        codigo_elegido,
+        valor_nombre_actual,
+        valor_categoria_actual,
+        valor_descripcion_actual,
+        tuple(valor_ubicaciones_actuales),
+        valor_principal_actual,
+    )
+    claves_campos_edicion = (
+        "campo_admin_editar_nombre",
+        "campo_admin_editar_categoria",
+        "campo_admin_editar_descripcion",
+        "campo_admin_editar_ubicaciones",
+        "campo_admin_editar_ubicacion_principal",
+    )
+    if (
+        st.session_state.get(clave_contexto_edicion) != contexto_producto_actual
+        or not all(clave in st.session_state for clave in claves_campos_edicion)
+    ):
+        st.session_state["campo_admin_editar_nombre"] = valor_nombre_actual
+        st.session_state["campo_admin_editar_categoria"] = valor_categoria_actual
+        st.session_state["campo_admin_editar_descripcion"] = valor_descripcion_actual
+        st.session_state["campo_admin_editar_ubicaciones"] = list(
+            valor_ubicaciones_actuales
+        )
+        st.session_state["campo_admin_editar_ubicacion_principal"] = (
+            valor_principal_actual
+        )
+        st.session_state[clave_contexto_edicion] = contexto_producto_actual
+
     with st.container(border=True):
         st.markdown(
             f"**Código único del producto (inmutable — RF-015 / CA-044):** "
@@ -2036,32 +2073,27 @@ def _renderizar_formulario_editar_producto_admin(
         )
         nombre_editado = st.text_input(
             label="Nombre del producto (obligatorio)",
-            value=str(prod_actual["nombre"]),
             key="campo_admin_editar_nombre",
         )
         categoria_editada = st.selectbox(
             label="Categoría predefinida",
             options=opciones_cat,
-            index=indice_cat,
             format_func=lambda cid: etiquetas_cat.get(cid, cid),
             key="campo_admin_editar_categoria",
         )
         descripcion_editada = st.text_area(
             label="Descripción del producto",
-            value=str(prod_actual.get("descripcion", "")),
             key="campo_admin_editar_descripcion",
         )
         ubicaciones_editadas = st.multiselect(
             label="Ubicaciones físicas asignadas al producto (mínimo una)",
             options=opciones_ubic,
-            default=ids_todas_actuales,
             format_func=lambda uid: etiquetas_ubic.get(uid, uid),
             key="campo_admin_editar_ubicaciones",
         )
         ubicacion_principal_editada = st.selectbox(
             label="Ubicación física principal (exactamente una)",
             options=opciones_ubic,
-            index=indice_prin,
             format_func=lambda uid: etiquetas_ubic.get(uid, uid),
             key="campo_admin_editar_ubicacion_principal",
         )
