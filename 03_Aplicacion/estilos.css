@@ -238,6 +238,55 @@ html, body, [data-testid="stAppViewContainer"], .main, .stMain {
     line-height: 1.4;
 }
 
+/* Estilos operativos del chat Asistente Gemini — Bloque 2 (P16: RF-F-012..RF-F-025) */
+.ferms-gemini-aviso-permanente {
+    background-color: #eff6ff;
+    border: 1px solid #93c5fd;
+    border-left: 4px solid var(--ferms-color-primario);
+    border-radius: 0.55rem;
+    padding: 0.65rem 0.8rem;
+    font-size: 0.82rem;
+    color: var(--ferms-color-texto);
+    line-height: 1.42;
+    margin-bottom: 0.75rem;
+    text-align: left;
+}
+
+.ferms-gemini-contexto-producto {
+    background-color: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.5rem;
+    padding: 0.55rem 0.75rem;
+    font-size: 0.83rem;
+    color: var(--ferms-color-texto-secundario);
+    line-height: 1.4;
+    margin-bottom: 0.65rem;
+    text-align: left;
+}
+
+.ferms-gemini-mensaje-usuario {
+    background-color: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.6rem;
+    padding: 0.6rem 0.8rem;
+    margin-bottom: 0.45rem;
+    font-size: 0.88rem;
+    color: var(--ferms-color-texto);
+    text-align: left;
+}
+
+.ferms-gemini-mensaje-asistente {
+    background-color: #ffffff;
+    border: 1px solid #bfdbfe;
+    border-radius: 0.6rem;
+    padding: 0.7rem 0.85rem;
+    margin-bottom: 0.65rem;
+    font-size: 0.88rem;
+    color: var(--ferms-color-texto);
+    line-height: 1.48;
+    text-align: left;
+}
+
 /* Indicador de paginación accesible */
 .ferms-paginacion-info {
     text-align: center;

@@ -191,6 +191,52 @@ from github_inventario import (  # noqa: E402
     ocultar_secretos_en_texto,
 )
 from inventario import InventarioDatos  # noqa: E402
+import asistente_gemini  # noqa: E402
+from asistente_gemini import (  # noqa: E402
+    AVISO_PERMANENTE_IA_GEMINI,
+    CLAVE_CAMBIO_PRODUCTO_PENDIENTE_GEMINI,
+    CLAVE_CONTADOR_USO_GEMINI,
+    CLAVE_HISTORIAL_CHAT_GEMINI,
+    CLAVE_IDIOMA_PREFERIDO_GEMINI,
+    CLAVE_PRODUCTO_ANTERIOR_GEMINI,
+    CLAVE_PRODUCTO_CONTEXTO_GEMINI,
+    CLAVE_ULTIMA_PREGUNTA_FALLIDA_GEMINI,
+    CLAVE_ULTIMO_ERROR_GEMINI,
+    CLAVE_ULTIMO_RESULTADO_GEMINI,
+    CONFIGURACION_LIMITES_DEFECTO,
+    LONGITUD_MAXIMA_PREGUNTA_CARACTERES_DEFECTO,
+    MAX_CONSULTAS_POR_VENTANA_DEFECTO,
+    MAX_MENSAJES_HISTORIAL_CONTEXTO_DEFECTO,
+    MENSAJE_NUEVA_CONVERSACION_GEMINI,
+    MODELO_GEMINI_DEFECTO,
+    PLACEHOLDER_PREGUNTA_GEMINI,
+    TEXTO_BOTON_ENVIAR_PREGUNTA_GEMINI,
+    TEXTO_BOTON_NUEVA_CONVERSACION_GEMINI,
+    TEXTO_BOTON_REINTENTAR_GEMINI,
+    ClienteGeneradorGemini,
+    CodigoErrorGemini,
+    ConfiguracionLimitesGemini,
+    ErrorAsistenteGemini,
+    EstadoRespuestaGemini,
+    EstadoUsoSesionGemini,
+    IdiomaAsistente,
+    MensajeChatGemini,
+    ProductoContextoGemini,
+    ResultadoConsultaGemini,
+    SolicitudModeloGemini,
+    inicializar_estado_gemini_en_sesion,
+    iniciar_nueva_conversacion_gemini,
+    obtener_clave_api_gemini,
+    obtener_estado_uso_gemini_en_sesion,
+    obtener_historial_chat_gemini,
+    obtener_producto_activo_seleccionado_contexto,
+    obtener_productos_relevantes_para_consulta,
+    ocultar_secretos_gemini,
+    procesar_consulta_gemini_en_sesion,
+    reintentar_ultima_consulta_gemini_en_sesion,
+    sincronizar_producto_seleccionado_gemini,
+    verificar_condiciones_capa_gratuita,
+)
 import persistencia_github  # noqa: E402
 from persistencia_github import (  # noqa: E402
     CLAVE_CONFIRMACION_GUARDADO_GITHUB,
@@ -420,6 +466,7 @@ def inicializar_estado_sesion(
     for clave, valor_defecto in valores_por_defecto.items():
         if clave not in destino:
             destino[clave] = valor_defecto
+    inicializar_estado_gemini_en_sesion(destino)
     return destino
 
 
@@ -1751,6 +1798,10 @@ def seleccionar_producto_en_sesion(
     """Selecciona un producto por su código exacto y devuelve su detalle desde el inventario en sesión."""
     destino = inicializar_estado_sesion(estado)
     preparar_seleccion_producto_para_detalle(codigo_producto, estado=destino)
+    sincronizar_producto_seleccionado_gemini(
+        destino,
+        codigo_seleccionado_actual=destino.get(CLAVE_PRODUCTO_SELECCIONADO),
+    )
     return obtener_detalle_producto_en_sesion(estado=destino)
 
 
@@ -1760,6 +1811,115 @@ def volver_a_resultados_en_sesion(
     """Cierra la vista de detalle y regresa a la lista de resultados conservando página y búsqueda activa."""
     destino = inicializar_estado_sesion(estado)
     destino[CLAVE_PRODUCTO_SELECCIONADO] = None
+    sincronizar_producto_seleccionado_gemini(
+        destino,
+        codigo_seleccionado_actual=None,
+    )
+
+
+def _obtener_inventario_lectura_para_gemini(
+    estado: MutableMapping[str, Any],
+    *,
+    inventario_explicito: InventarioDatos | None = None,
+    descargador_remoto: DescargadorRemoto | None = None,
+) -> InventarioDatos | None:
+    """Obtiene en modo solo lectura el inventario vigente para consulta contextual de Gemini."""
+    if inventario_explicito is not None:
+        return inventario_explicito
+
+    inv_sesion = estado.get(CLAVE_INVENTARIO_SESION)
+    if isinstance(inv_sesion, InventarioDatos):
+        return inv_sesion
+
+    lector = descargador_remoto or github_inventario.descargar_inventario_remoto
+    try:
+        lectura = lector(config=CONFIGURACION_POR_DEFECTO)
+        if isinstance(lectura.inventario, InventarioDatos):
+            estado[CLAVE_INVENTARIO_SESION] = lectura.inventario
+            estado[CLAVE_SHA_SESION] = lectura.sha_github
+            return lectura.inventario
+    except Exception:
+        return None
+    return None
+
+
+def ejecutar_consulta_gemini_en_sesion(
+    pregunta: Any,
+    *,
+    estado: MutableMapping[str, Any] | None = None,
+    inventario: InventarioDatos | None = None,
+    descargador_remoto: DescargadorRemoto | None = None,
+    cliente_generador: ClienteGeneradorGemini | None = None,
+    fuente_secretos: Mapping[str, Any] | None = None,
+    fuente_entorno: Mapping[str, str] | None = None,
+    config_limites: ConfiguracionLimitesGemini = CONFIGURACION_LIMITES_DEFECTO,
+    reloj: ProveedorReloj | None = None,
+) -> ResultadoConsultaGemini:
+    """Ejecuta una consulta de cliente en el chat Gemini en modo lectura sin afectar el buscador."""
+    destino = inicializar_estado_sesion(estado)
+    inv_efectivo = _obtener_inventario_lectura_para_gemini(
+        destino,
+        inventario_explicito=inventario,
+        descargador_remoto=descargador_remoto,
+    )
+    codigo_sel = destino.get(CLAVE_PRODUCTO_SELECCIONADO)
+    return procesar_consulta_gemini_en_sesion(
+        pregunta,
+        estado=destino,
+        inventario=inv_efectivo,
+        codigo_producto_seleccionado=codigo_sel,
+        cliente_generador=cliente_generador,
+        fuente_secretos=fuente_secretos,
+        fuente_entorno=fuente_entorno,
+        config_limites=config_limites,
+        reloj=reloj,
+    )
+
+
+def ejecutar_nueva_conversacion_gemini_en_sesion(
+    estado: MutableMapping[str, Any] | None = None,
+    *,
+    config_limites: ConfiguracionLimitesGemini = CONFIGURACION_LIMITES_DEFECTO,
+    reloj: ProveedorReloj | None = None,
+) -> EstadoUsoSesionGemini:
+    """Limpia el historial y contexto temporal de Gemini conservando el contador de uso de la ventana."""
+    destino = inicializar_estado_sesion(estado)
+    return iniciar_nueva_conversacion_gemini(
+        destino,
+        config_limites=config_limites,
+        reloj=reloj,
+    )
+
+
+def ejecutar_reintento_gemini_en_sesion(
+    estado: MutableMapping[str, Any] | None = None,
+    *,
+    inventario: InventarioDatos | None = None,
+    descargador_remoto: DescargadorRemoto | None = None,
+    cliente_generador: ClienteGeneradorGemini | None = None,
+    fuente_secretos: Mapping[str, Any] | None = None,
+    fuente_entorno: Mapping[str, str] | None = None,
+    config_limites: ConfiguracionLimitesGemini = CONFIGURACION_LIMITES_DEFECTO,
+    reloj: ProveedorReloj | None = None,
+) -> ResultadoConsultaGemini | None:
+    """Reintenta manualmente la última consulta fallida en el chat Gemini."""
+    destino = inicializar_estado_sesion(estado)
+    inv_efectivo = _obtener_inventario_lectura_para_gemini(
+        destino,
+        inventario_explicito=inventario,
+        descargador_remoto=descargador_remoto,
+    )
+    codigo_sel = destino.get(CLAVE_PRODUCTO_SELECCIONADO)
+    return reintentar_ultima_consulta_gemini_en_sesion(
+        estado=destino,
+        inventario=inv_efectivo,
+        codigo_producto_seleccionado=codigo_sel,
+        cliente_generador=cliente_generador,
+        fuente_secretos=fuente_secretos,
+        fuente_entorno=fuente_entorno,
+        config_limites=config_limites,
+        reloj=reloj,
+    )
 
 
 def procesar_consulta_busqueda_publica(
@@ -2217,28 +2377,167 @@ def _renderizar_estado_inicial() -> None:
 
 
 def _renderizar_seccion_gemini_proximamente() -> None:
-    """Presenta el área visual reservada para el Asistente Gemini en v0 (Sección 6, RF-032..RF-034, CA-031..CA-033)."""
+    """Presenta el área visual reservada para el Asistente Gemini en v0 (compatibilidad legado)."""
+    _renderizar_seccion_gemini()
+
+
+def _renderizar_seccion_gemini(
+    *,
+    descargador_remoto: DescargadorRemoto | None = None,
+    cliente_generador: ClienteGeneradorGemini | None = None,
+) -> None:
+    """Renderiza el chat operativo de texto del Asistente Gemini (Bloque 2 — P16, RF-F-012..RF-F-025)."""
     with st.container(border=True):
         st.subheader(f"✨ {TITULO_SECCION_GEMINI}")
-        st.markdown(f"**Estado:** `{ESTADO_GEMINI_PROXIMAMENTE}`")
+
+        # 1. Aviso permanente de inteligencia artificial y seguridad técnica (RF-F-019, CA-F-015)
         st.markdown(
             f"""
-            <div class="ferms-gemini-panel" role="region" aria-label="{TITULO_SECCION_GEMINI} — {ESTADO_GEMINI_PROXIMAMENTE}">
-                <div class="ferms-gemini-cabecera">
-                    <span class="ferms-gemini-titulo">✨ {TITULO_SECCION_GEMINI}</span>
-                    <span class="ferms-gemini-badge">{ESTADO_GEMINI_PROXIMAMENTE}</span>
-                </div>
-                <div class="ferms-gemini-icono" aria-hidden="true">🤖</div>
-                <p class="ferms-gemini-subtitulo">{SUBTITULO_GEMINI_V0}</p>
-                <p class="ferms-gemini-descripcion">{DESCRIPCION_GEMINI_V0}</p>
-                <div class="ferms-gemini-nota-estado">{NOTA_ESTADO_GEMINI_V0}</div>
+            <div class="ferms-gemini-aviso-permanente" role="note" aria-label="Aviso de inteligencia artificial y seguridad técnica">
+                <strong>ℹ️ Aviso importante:</strong> {AVISO_PERMANENTE_IA_GEMINI}
             </div>
             """,
             unsafe_allow_html=True,
         )
-        st.caption(
-            "Próximamente en la entrega final · Sin chat activo en FerreteríaMS v0."
+
+        # 2. Contexto actual del producto seleccionado (RF-F-016, CA-F-012)
+        codigo_sel = st.session_state.get(CLAVE_PRODUCTO_SELECCIONADO)
+        sincronizar_producto_seleccionado_gemini(
+            st.session_state,
+            codigo_seleccionado_actual=codigo_sel,
         )
+        inv_en_sesion = st.session_state.get(CLAVE_INVENTARIO_SESION)
+        prod_ctx = obtener_producto_activo_seleccionado_contexto(
+            inv_en_sesion if isinstance(inv_en_sesion, InventarioDatos) else None,
+            codigo_sel,
+        )
+        if prod_ctx is not None:
+            cod_seg = escapar_texto_presentacion_segura(prod_ctx.codigo_producto)
+            nom_seg = escapar_texto_presentacion_segura(prod_ctx.nombre)
+            ubic_seg = escapar_texto_presentacion_segura(
+                prod_ctx.ubicacion_principal_etiqueta
+            )
+            st.markdown(
+                f"""
+                <div class="ferms-gemini-contexto-producto" role="status" aria-label="Producto activo en contexto">
+                    <strong>📌 Producto seleccionado en contexto:</strong> {nom_seg}
+                    (<code>{cod_seg}</code>)<br/>
+                    <span>📍 {ubic_seg}</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            st.caption(
+                "Asesoría técnica bilingüe (ES/EN) sobre herramientas, materiales, reparaciones y proyectos. "
+                "Puedes seleccionar un producto de la búsqueda para incluirlo como referencia."
+            )
+
+        # 3. Contador de uso de la ventana actual y botón «Nueva conversación» (RF-F-022, RF-F-023)
+        estado_uso = obtener_estado_uso_gemini_en_sesion(st.session_state)
+        col_uso, col_nueva = st.columns([1.4, 1.2], vertical_alignment="center")
+        with col_uso:
+            st.caption(
+                f"📊 Consultas en ventana actual: "
+                f"{estado_uso.consultas_realizadas}/{estado_uso.limite_consultas}"
+            )
+        with col_nueva:
+            if st.button(
+                TEXTO_BOTON_NUEVA_CONVERSACION_GEMINI,
+                key="btn_nueva_conversacion_gemini",
+                use_container_width=True,
+            ):
+                ejecutar_nueva_conversacion_gemini_en_sesion(st.session_state)
+                st.session_state["_ferms_limpiar_campo_pregunta_gemini"] = True
+                st.rerun()
+
+        # 4. Historial temporal de mensajes de la sesión (RF-F-012, RF-F-021)
+        historial = obtener_historial_chat_gemini(st.session_state)
+        if not historial:
+            st.caption(
+                "Escribe tu consulta técnica abajo. Los productos activos confirmados en nuestro "
+                "catálogo se distinguirán explícitamente de las recomendaciones generales."
+            )
+        else:
+            for msg in historial:
+                texto_msg_seguro = escapar_texto_presentacion_segura(
+                    ocultar_secretos_gemini(msg.contenido)
+                ).replace("\n", "<br/>")
+                if msg.rol == "user":
+                    st.markdown(
+                        f"""
+                        <div class="ferms-gemini-mensaje-usuario">
+                            <strong>👤 Tú:</strong><br/>{texto_msg_seguro}
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        f"""
+                        <div class="ferms-gemini-mensaje-asistente">
+                            <strong>🤖 Asistente Gemini:</strong><br/>{texto_msg_seguro}
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+        # 5. Retroalimentación de errores y opción de reintento manual (RF-F-024, CA-F-017)
+        error_gemini = st.session_state.get(CLAVE_ULTIMO_ERROR_GEMINI)
+        if isinstance(error_gemini, Mapping):
+            msg_err_seg = ocultar_secretos_gemini(str(error_gemini.get("mensaje", "")))
+            cod_err_str = str(error_gemini.get("codigo", ""))
+            es_reintentable = bool(error_gemini.get("reintentable", False))
+            if msg_err_seg:
+                if cod_err_str in {
+                    CodigoErrorGemini.PREGUNTA_VACIA.value,
+                    CodigoErrorGemini.PREGUNTA_DEMASIADO_LARGA.value,
+                    CodigoErrorGemini.LIMITE_USO_SESION_ALCANZADO.value,
+                }:
+                    st.warning(msg_err_seg)
+                else:
+                    st.error(msg_err_seg)
+            if es_reintentable and st.session_state.get(CLAVE_ULTIMA_PREGUNTA_FALLIDA_GEMINI):
+                if st.button(
+                    TEXTO_BOTON_REINTENTAR_GEMINI,
+                    key="btn_reintentar_consulta_gemini",
+                    use_container_width=True,
+                ):
+                    ejecutar_reintento_gemini_en_sesion(
+                        estado=st.session_state,
+                        descargador_remoto=descargador_remoto,
+                        cliente_generador=cliente_generador,
+                    )
+                    st.rerun()
+
+        # 6. Campo para escribir preguntas y botón de envío (RF-F-012, RF-F-023)
+        if st.session_state.pop("_ferms_limpiar_campo_pregunta_gemini", False):
+            st.session_state["campo_pregunta_gemini"] = ""
+
+        pregunta_input = st.text_area(
+            label="Consulta técnica para el Asistente Gemini",
+            placeholder=PLACEHOLDER_PREGUNTA_GEMINI,
+            key="campo_pregunta_gemini",
+            height=92,
+            disabled=estado_uso.limite_alcanzado,
+        )
+        enviar_presionado = st.button(
+            TEXTO_BOTON_ENVIAR_PREGUNTA_GEMINI,
+            key="btn_enviar_pregunta_gemini",
+            type="primary",
+            disabled=estado_uso.limite_alcanzado,
+            use_container_width=True,
+        )
+        if enviar_presionado:
+            res_consulta = ejecutar_consulta_gemini_en_sesion(
+                pregunta_input,
+                estado=st.session_state,
+                descargador_remoto=descargador_remoto,
+                cliente_generador=cliente_generador,
+            )
+            if res_consulta.exito:
+                st.session_state["_ferms_limpiar_campo_pregunta_gemini"] = True
+            st.rerun()
 
 
 def formatear_nombre_usuario_admin_seguro(usuario: Any) -> str:
@@ -3840,8 +4139,9 @@ def _renderizar_area_inventario(
 
 def renderizar_aplicacion(
     descargador_remoto: DescargadorRemoto | None = None,
+    cliente_generador_gemini: ClienteGeneradorGemini | None = None,
 ) -> None:
-    """Construye y renderiza la interfaz pública responsive y la sección administrativa de FerreteríaMS v0."""
+    """Construye y renderiza la interfaz pública responsive, el chat Gemini y la administración."""
 
     st.set_page_config(
     page_title=TITULO,
@@ -3870,7 +4170,10 @@ def renderizar_aplicacion(
         else:
             _renderizar_area_inventario(descargador_remoto=descargador_remoto)
     with col_gemini:
-        _renderizar_seccion_gemini_proximamente()
+        _renderizar_seccion_gemini(
+            descargador_remoto=descargador_remoto,
+            cliente_generador=cliente_generador_gemini,
+        )
 
 
 if __name__ == "__main__":
