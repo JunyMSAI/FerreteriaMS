@@ -316,9 +316,13 @@ NOTA_ESTADO_GEMINI_V0: str = (
     "el asistente conversacional ni se realizan consultas a modelos de inteligencia artificial."
 )
 
-# Constantes de navegación y sección administrativa (Prompts 07, 08 y 09)
+# Constantes de navegación y sección administrativa (Prompts 07, 08, 09 y 18)
 TEXTO_BOTON_NAV_INICIO: str = "🏠 Inicio"
 TEXTO_BOTON_NAV_PRODUCTOS: str = "📦 Productos"
+TEXTO_BOTON_NAV_GEMINI: str = "✨ Asistente Gemini"
+TEXTO_BOTON_IR_GEMINI_DETALLE: str = "✨ Consultar en Asistente Gemini"
+TEXTO_BOTON_VOLVER_INICIO_GEMINI: str = "🔍 Ir a búsqueda de productos"
+ALTURA_CONTENEDOR_CHAT_GEMINI_PX: int = 460
 TITULO_SECCION_ADMIN_LOGIN: str = "Acceso de administración"
 SUBTITULO_SECCION_ADMIN_LOGIN: str = (
     "Ingresa con tu usuario y contraseña para acceder al panel administrativo de Productos."
@@ -395,10 +399,12 @@ CLAVE_SECCION_ACTIVA = "ferms_seccion_activa"
 
 
 class SeccionInterfaz(str, Enum):
-    """Secciones principales de navegación de FerreteríaMS v0 (Inicio público y Productos administrativo)."""
+    """Secciones principales de navegación de FerreteríaMS (Inicio, Productos y Asistente Gemini)."""
 
     INICIO = "INICIO"
     PRODUCTOS = "PRODUCTOS"
+    ASISTENTE_GEMINI = "ASISTENTE_GEMINI"
+    GEMINI = "ASISTENTE_GEMINI"
 
 
 class EstadoOperativoInterfaz(str, Enum):
@@ -471,19 +477,30 @@ def inicializar_estado_sesion(
     return destino
 
 
+def _resolver_seccion_interfaz(valor: Any) -> SeccionInterfaz:
+    """Resuelve un valor textual o enumerado hacia una sección principal válida (`INICIO` por defecto)."""
+    if isinstance(valor, SeccionInterfaz):
+        return valor
+    if isinstance(valor, str):
+        normalizado = valor.strip().upper()
+        if normalizado == SeccionInterfaz.PRODUCTOS.value:
+            return SeccionInterfaz.PRODUCTOS
+        if normalizado in {
+            SeccionInterfaz.ASISTENTE_GEMINI.value,
+            "GEMINI",
+            "ASISTENTE GEMINI",
+        }:
+            return SeccionInterfaz.ASISTENTE_GEMINI
+    return SeccionInterfaz.INICIO
+
+
 def seleccionar_seccion_interfaz(
     seccion: SeccionInterfaz | str,
     estado: MutableMapping[str, Any] | None = None,
 ) -> SeccionInterfaz:
-    """Cambia la sección activa de la interfaz entre `INICIO` (público) y `PRODUCTOS` (administración)."""
+    """Cambia la sección activa entre `INICIO` (público), `PRODUCTOS` (administración) y `ASISTENTE_GEMINI`."""
     destino = inicializar_estado_sesion(estado)
-    if isinstance(seccion, SeccionInterfaz):
-        seccion_enum = seccion
-    elif isinstance(seccion, str) and seccion.strip().upper() == SeccionInterfaz.PRODUCTOS.value:
-        seccion_enum = SeccionInterfaz.PRODUCTOS
-    else:
-        seccion_enum = SeccionInterfaz.INICIO
-
+    seccion_enum = _resolver_seccion_interfaz(seccion)
     destino[CLAVE_SECCION_ACTIVA] = seccion_enum.value
     return seccion_enum
 
@@ -494,11 +511,7 @@ def obtener_seccion_activa(
     """Devuelve la sección activa actual en el estado de sesión (`INICIO` por defecto)."""
     origen: Mapping[str, Any] = estado if estado is not None else st.session_state
     valor = origen.get(CLAVE_SECCION_ACTIVA, SeccionInterfaz.INICIO.value)
-    if isinstance(valor, SeccionInterfaz):
-        return valor
-    if isinstance(valor, str) and valor.strip().upper() == SeccionInterfaz.PRODUCTOS.value:
-        return SeccionInterfaz.PRODUCTOS
-    return SeccionInterfaz.INICIO
+    return _resolver_seccion_interfaz(valor)
 
 
 def ejecutar_login_administrativo_en_sesion(
@@ -2179,7 +2192,7 @@ def _renderizar_vista_detalle_producto(
     respuesta_busqueda: RespuestaInterfazBusqueda | None = None,
 ) -> None:
     """Presenta la vista detallada de un producto seleccionado y sus ubicaciones físicas (Secciones 5, 6, 7 y 9)."""
-    col_volver, col_contexto = st.columns([1.5, 3.5])
+    col_volver, col_gemini_detalle, col_contexto = st.columns([1.4, 1.7, 2.4])
     with col_volver:
         if st.button(
             TEXTO_BOTON_VOLVER_RESULTADOS,
@@ -2187,6 +2200,14 @@ def _renderizar_vista_detalle_producto(
             use_container_width=True,
         ):
             volver_a_resultados_en_sesion()
+            st.rerun()
+    with col_gemini_detalle:
+        if st.button(
+            TEXTO_BOTON_IR_GEMINI_DETALLE,
+            key="btn_ir_gemini_desde_detalle",
+            use_container_width=True,
+        ):
+            seleccionar_seccion_interfaz(SeccionInterfaz.ASISTENTE_GEMINI)
             st.rerun()
     with col_contexto:
         if (
@@ -2318,15 +2339,17 @@ def _aplicar_estilos_locales() -> None:
 
 
 def _renderizar_banner_encabezado() -> None:
-    """Presenta la identidad visual y la barra de navegación superior de FerreteríaMS (Inicio / Productos)."""
-    col_marca, col_nav = st.columns([2.35, 1], vertical_alignment="center")
+    """Presenta la identidad visual y la barra de navegación superior (Inicio, Productos y Asistente Gemini)."""
+    col_marca, col_nav = st.columns([1.65, 1.55], vertical_alignment="center")
     with col_marca:
         st.title(f"{ICONO_PAGINA} {TITULO}")
         st.caption(DESCRIPCION)
 
     seccion_actual = obtener_seccion_activa()
     with col_nav:
-        col_nav_inicio, col_nav_productos = st.columns(2, gap="small")
+        col_nav_inicio, col_nav_productos, col_nav_gemini = st.columns(
+            [1, 1.1, 1.45], gap="small"
+        )
         with col_nav_inicio:
             if st.button(
                 TEXTO_BOTON_NAV_INICIO,
@@ -2344,6 +2367,19 @@ def _renderizar_banner_encabezado() -> None:
                 use_container_width=True,
             ):
                 seleccionar_seccion_interfaz(SeccionInterfaz.PRODUCTOS)
+                st.rerun()
+        with col_nav_gemini:
+            if st.button(
+                TEXTO_BOTON_NAV_GEMINI,
+                key="btn_nav_gemini",
+                type=(
+                    "primary"
+                    if seccion_actual == SeccionInterfaz.ASISTENTE_GEMINI
+                    else "secondary"
+                ),
+                use_container_width=True,
+            ):
+                seleccionar_seccion_interfaz(SeccionInterfaz.ASISTENTE_GEMINI)
                 st.rerun()
 
     if seccion_actual == SeccionInterfaz.INICIO:
@@ -2377,6 +2413,12 @@ def _renderizar_estado_inicial() -> None:
         st.caption(TEXTO_AYUDA_EJEMPLOS)
 
 
+def preparar_markdown_mensaje_gemini(contenido: Any) -> str:
+    """Sanea secretos y normaliza saltos de línea conservando el formato Markdown (títulos, listas y párrafos)."""
+    texto_limpio = ocultar_secretos_gemini("" if contenido is None else str(contenido))
+    return texto_limpio.replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
 def _renderizar_seccion_gemini_proximamente() -> None:
     """Presenta el área visual reservada para el Asistente Gemini en v0 (compatibilidad legado)."""
     _renderizar_seccion_gemini()
@@ -2387,9 +2429,21 @@ def _renderizar_seccion_gemini(
     descargador_remoto: DescargadorRemoto | None = None,
     cliente_generador: ClienteGeneradorGemini | None = None,
 ) -> None:
-    """Renderiza el chat operativo de texto del Asistente Gemini (Bloque 2 — P16, RF-F-012..RF-F-025)."""
+    """Renderiza la página independiente de ancho completo del Asistente Gemini (P16 y P18, DEC-FINAL-035)."""
     with st.container(border=True):
-        st.subheader(f"✨ {TITULO_SECCION_GEMINI}")
+        col_titulo_gemini, col_ir_inicio = st.columns(
+            [2.6, 1], vertical_alignment="center"
+        )
+        with col_titulo_gemini:
+            st.subheader(f"✨ {TITULO_SECCION_GEMINI}")
+        with col_ir_inicio:
+            if st.button(
+                TEXTO_BOTON_VOLVER_INICIO_GEMINI,
+                key="btn_volver_inicio_desde_gemini",
+                use_container_width=True,
+            ):
+                seleccionar_seccion_interfaz(SeccionInterfaz.INICIO)
+                st.rerun()
 
         # 1. Aviso permanente de inteligencia artificial y seguridad técnica (RF-F-019, CA-F-015)
         st.markdown(
@@ -2431,12 +2485,12 @@ def _renderizar_seccion_gemini(
         else:
             st.caption(
                 "Asesoría técnica bilingüe (ES/EN) sobre herramientas, materiales, reparaciones y proyectos. "
-                "Puedes seleccionar un producto de la búsqueda para incluirlo como referencia."
+                "Puedes seleccionar un producto desde «Inicio» para incluirlo como referencia."
             )
 
         # 3. Contador de uso de la ventana actual y botón «Nueva conversación» (RF-F-022, RF-F-023)
         estado_uso = obtener_estado_uso_gemini_en_sesion(st.session_state)
-        col_uso, col_nueva = st.columns([1.4, 1.2], vertical_alignment="center")
+        col_uso, col_nueva = st.columns([2.2, 1], vertical_alignment="center")
         with col_uso:
             st.caption(
                 f"📊 Consultas en ventana actual: "
@@ -2452,36 +2506,27 @@ def _renderizar_seccion_gemini(
                 st.session_state["_ferms_limpiar_campo_pregunta_gemini"] = True
                 st.rerun()
 
-        # 4. Historial temporal de mensajes de la sesión (RF-F-012, RF-F-021)
+        # 4. Contenedor amplio de conversación con desplazamiento vertical interno (RF-F-012, RF-F-021, DEC-FINAL-035)
         historial = obtener_historial_chat_gemini(st.session_state)
-        if not historial:
-            st.caption(
-                "Escribe tu consulta técnica abajo. Los productos activos confirmados en nuestro "
-                "catálogo se distinguirán explícitamente de las recomendaciones generales."
-            )
-        else:
-            for msg in historial:
-                texto_msg_seguro = escapar_texto_presentacion_segura(
-                    ocultar_secretos_gemini(msg.contenido)
-                ).replace("\n", "<br/>")
-                if msg.rol == "user":
-                    st.markdown(
-                        f"""
-                        <div class="ferms-gemini-mensaje-usuario">
-                            <strong>👤 Tú:</strong><br/>{texto_msg_seguro}
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
+        with st.container(height=ALTURA_CONTENEDOR_CHAT_GEMINI_PX, border=True):
+            if not historial:
+                st.caption(
+                    "Escribe tu consulta técnica abajo. Los productos activos confirmados en nuestro "
+                    "catálogo se distinguirán explícitamente de las recomendaciones generales."
+                )
+            else:
+                for msg in historial:
+                    texto_markdown_seguro = preparar_markdown_mensaje_gemini(
+                        msg.contenido
                     )
-                else:
-                    st.markdown(
-                        f"""
-                        <div class="ferms-gemini-mensaje-asistente">
-                            <strong>🤖 Asistente Gemini:</strong><br/>{texto_msg_seguro}
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
+                    if msg.rol == "user":
+                        with st.chat_message("user", avatar="👤"):
+                            st.markdown(f"**👤 Tú:**\n\n{texto_markdown_seguro}")
+                    else:
+                        with st.chat_message("assistant", avatar="🤖"):
+                            st.markdown(
+                                f"**🤖 Asistente Gemini:**\n\n{texto_markdown_seguro}"
+                            )
 
         # 5. Retroalimentación de errores y opción de reintento manual (RF-F-024, CA-F-017)
         error_gemini = st.session_state.get(CLAVE_ULTIMO_ERROR_GEMINI)
@@ -4025,6 +4070,10 @@ def _renderizar_area_inventario(
 
     col_input, col_boton = st.columns([4, 1])
     with col_input:
+        if "campo_nombre_producto" not in st.session_state:
+            st.session_state["campo_nombre_producto"] = st.session_state.get(
+                CLAVE_TERMINO_BUSCADO, ""
+            )
         termino_input = st.text_input(
             label=MENSAJE_INICIAL_BUSQUEDA,
             placeholder=PLACEHOLDER_CAMPO_BUSQUEDA,
@@ -4176,23 +4225,22 @@ def renderizar_aplicacion(
     _aplicar_estilos_locales()
     inicializar_estado_sesion()
 
-    # 1. Encabezado, identidad visual y navegación (Inicio / Productos)
+    # 1. Encabezado, identidad visual y navegación (Inicio / Productos / Asistente Gemini)
     _renderizar_banner_encabezado()
 
-    # 2. Composición principal a la izquierda (Inicio público o Productos protegido) y Gemini a la derecha
-    col_principal, col_gemini = st.columns([2.35, 1], gap="large")
-    with col_principal:
-        if obtener_seccion_activa() == SeccionInterfaz.PRODUCTOS:
-            _renderizar_seccion_administrativa_productos(
-                descargador_remoto=descargador_remoto
-            )
-        else:
-            _renderizar_area_inventario(descargador_remoto=descargador_remoto)
-    with col_gemini:
+    # 2. Renderizado de ancho completo de la página activa (DEC-FINAL-035)
+    seccion_activa = obtener_seccion_activa()
+    if seccion_activa == SeccionInterfaz.PRODUCTOS:
+        _renderizar_seccion_administrativa_productos(
+            descargador_remoto=descargador_remoto
+        )
+    elif seccion_activa == SeccionInterfaz.ASISTENTE_GEMINI:
         _renderizar_seccion_gemini(
             descargador_remoto=descargador_remoto,
             cliente_generador=cliente_generador_gemini,
         )
+    else:
+        _renderizar_area_inventario(descargador_remoto=descargador_remoto)
 
 
 if __name__ == "__main__":
