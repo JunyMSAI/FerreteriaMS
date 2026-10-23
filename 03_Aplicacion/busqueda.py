@@ -33,7 +33,9 @@ if str(_DIRECTORIO_ACTUAL) not in sys.path:
 from inventario import (  # noqa: E402
     HOJA_CATEGORIAS,
     HOJA_PRODUCTOS,
+    ErrorValorActivoInvalido,
     InventarioDatos,
+    normalizar_valor_activo,
     obtener_producto_por_codigo,
     obtener_productos_estructurados,
     validar_inventario,
@@ -238,12 +240,50 @@ def resolver_pagina_busqueda(
     return max(1, pagina_int)
 
 
+def _resolver_estado_activo_registro(item: Mapping[str, Any] | pd.Series) -> tuple[str, bool]:
+    """Determina el estado ('Sí'/'No', es_activo) de un registro o fila de producto con retrocompatibilidad."""
+    if "es_activo" in item and isinstance(item["es_activo"], bool):
+        es_activo = bool(item["es_activo"])
+        return ("Sí" if es_activo else "No"), es_activo
+
+    val_bruto: Any = "Sí"
+    if "Activo" in item:
+        val_bruto = item["Activo"]
+    elif "activo" in item:
+        val_bruto = item["activo"]
+
+    if val_bruto is None:
+        return "Sí", True
+    try:
+        if pd.isna(val_bruto):
+            return "Sí", True
+    except (TypeError, ValueError):
+        pass
+
+    texto_limpio = str(val_bruto).strip()
+    if not texto_limpio:
+        return "Sí", True
+    try:
+        activo_norm = normalizar_valor_activo(texto_limpio)
+    except ErrorValorActivoInvalido:
+        return "No", False
+    return activo_norm, (activo_norm == "Sí")
+
+
 def extraer_catalogo_productos(
     origen_datos: InventarioDatos | Iterable[Mapping[str, Any]] | pd.DataFrame | Mapping[str, pd.DataFrame],
+    *,
+    solo_activos: bool = True,
 ) -> list[dict[str, Any]]:
-    """Obtiene una lista uniforme de registros de productos reutilizando las estructuras de `inventario.py`."""
+    """Obtiene una lista uniforme de registros de productos reutilizando las estructuras de `inventario.py`.
+
+    Por defecto (`solo_activos=True`) excluye los productos inactivos (`Activo = "No"`),
+    cumpliendo RF-F-008 y CA-F-007 para la búsqueda pública y el catálogo activo.
+    """
     if isinstance(origen_datos, InventarioDatos):
-        return obtener_productos_estructurados(origen_datos)
+        return obtener_productos_estructurados(
+            origen_datos, incluir_inactivos=not solo_activos
+        )
 
     if isinstance(origen_datos, Mapping):
         if HOJA_PRODUCTOS in origen_datos and isinstance(origen_datos[HOJA_PRODUCTOS], pd.DataFrame):
@@ -260,6 +300,9 @@ def extraer_catalogo_productos(
                     )
             registros_map: list[dict[str, Any]] = []
             for _, fila in df_prod.iterrows():
+                activo_texto, es_activo = _resolver_estado_activo_registro(fila)
+                if solo_activos and not es_activo:
+                    continue
                 cat_id = str(fila.get("Categoria_ID", "")).strip()
                 registros_map.append(
                     {
@@ -268,6 +311,8 @@ def extraer_catalogo_productos(
                         "categoria_id": cat_id,
                         "nombre_categoria": mapa_cat.get(cat_id, ""),
                         "descripcion": str(fila.get("Descripcion", "")).strip(),
+                        "activo": activo_texto,
+                        "es_activo": es_activo,
                         "ubicacion_principal": None,
                         "ubicaciones_secundarias": [],
                         "todas_las_ubicaciones": [],
@@ -278,6 +323,9 @@ def extraer_catalogo_productos(
     if isinstance(origen_datos, pd.DataFrame):
         registros_df: list[dict[str, Any]] = []
         for _, fila in origen_datos.iterrows():
+            activo_texto, es_activo = _resolver_estado_activo_registro(fila)
+            if solo_activos and not es_activo:
+                continue
             cod = str(fila.get("Codigo_Producto", fila.get("codigo_producto", ""))).strip()
             nom = str(fila.get("Nombre", fila.get("nombre", ""))).strip()
             cat_id = str(fila.get("Categoria_ID", fila.get("categoria_id", ""))).strip()
@@ -290,6 +338,8 @@ def extraer_catalogo_productos(
                     "categoria_id": cat_id,
                     "nombre_categoria": nom_cat,
                     "descripcion": desc,
+                    "activo": activo_texto,
+                    "es_activo": es_activo,
                     "ubicacion_principal": None,
                     "ubicaciones_secundarias": [],
                     "todas_las_ubicaciones": [],
@@ -304,6 +354,9 @@ def extraer_catalogo_productos(
                 raise TypeError(
                     f"Cada elemento del catálogo debe ser un mapeo o diccionario; se recibió {type(item).__name__}."
                 )
+            activo_texto, es_activo = _resolver_estado_activo_registro(item)
+            if solo_activos and not es_activo:
+                continue
             cod = str(item.get("codigo_producto", item.get("Codigo_Producto", ""))).strip()
             nom = str(item.get("nombre", item.get("Nombre", ""))).strip()
             cat_id = str(item.get("categoria_id", item.get("Categoria_ID", ""))).strip()
@@ -319,6 +372,8 @@ def extraer_catalogo_productos(
                     "categoria_id": cat_id,
                     "nombre_categoria": nom_cat,
                     "descripcion": desc,
+                    "activo": activo_texto,
+                    "es_activo": es_activo,
                     "ubicacion_principal": dict(ubic_prin) if isinstance(ubic_prin, Mapping) else None,
                     "ubicaciones_secundarias": [
                         dict(u) for u in ubic_sec if isinstance(u, Mapping)
@@ -333,6 +388,13 @@ def extraer_catalogo_productos(
     raise TypeError(
         f"Origen de datos no soportado para la búsqueda: {type(origen_datos).__name__}."
     )
+
+
+def obtener_catalogo_productos_activos(
+    origen_datos: InventarioDatos | Iterable[Mapping[str, Any]] | pd.DataFrame | Mapping[str, pd.DataFrame],
+) -> list[dict[str, Any]]:
+    """Devuelve exclusivamente el catálogo de productos activos (`Activo = 'Sí'`) para consultas públicas y contexto activo."""
+    return extraer_catalogo_productos(origen_datos, solo_activos=True)
 
 
 def buscar_productos_por_nombre(
@@ -803,8 +865,10 @@ def consultar_detalle_producto(
                 mensaje_usuario=MENSAJE_PRODUCTO_SELECCIONADO_NO_DISPONIBLE,
             )
 
-    # Reutilizar `obtener_producto_por_codigo` de `inventario.py` (Sección 8.1)
-    datos_producto = obtener_producto_por_codigo(inventario, codigo_limpio)
+    # Reutilizar `obtener_producto_por_codigo` de `inventario.py` excluyendo inactivos (Sección 8.1, RF-F-008)
+    datos_producto = obtener_producto_por_codigo(
+        inventario, codigo_limpio, incluir_inactivos=False
+    )
     if datos_producto is None:
         return ResultadoConsultaDetalle(
             estado=EstadoDetalleProducto.PRODUCTO_NO_DISPONIBLE,

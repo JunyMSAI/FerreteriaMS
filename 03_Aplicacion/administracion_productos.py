@@ -80,6 +80,8 @@ from inventario import (  # noqa: E402
     DetalleErrorInventario,
     ErrorInventario,
     ErrorValidacionInventario,
+    ErrorValorActivoInvalido,
+    ErrorValorPrincipalInvalido,
     InventarioDatos,
     construir_inventario_datos,
     crear_inventario_demostrativo,
@@ -166,6 +168,14 @@ MENSAJE_DESACTIVACION_UBICACION_LOCAL_EXITOSA: str = (
     "Ubicación física desactivada en la copia temporal de trabajo (cambio local "
     "pendiente de guardar; aún no persistido en GitHub)."
 )
+MENSAJE_DESACTIVACION_PRODUCTO_LOCAL_EXITOSA: str = (
+    "Producto desactivado en la copia temporal de trabajo (cambio local "
+    "pendiente de guardar; aún no persistido en GitHub)."
+)
+MENSAJE_REACTIVACION_PRODUCTO_LOCAL_EXITOSA: str = (
+    "Producto reactivado en la copia temporal de trabajo (cambio local "
+    "pendiente de guardar; aún no persistido en GitHub)."
+)
 MENSAJE_CAMBIOS_LOCALES_DESCARTADOS: str = (
     "Se descartaron las modificaciones locales no guardadas y se restauró la copia "
     "base original del inventario en memoria."
@@ -204,7 +214,7 @@ class EstadoInventarioAdmin(str, Enum):
 
 
 class CodigoErrorAdministrativo(str, Enum):
-    """Códigos estructurados para los rechazos de validación y seguridad del Prompt 09 y Prompt 14."""
+    """Códigos estructurados para los rechazos de validación y seguridad del Prompt 09, Prompt 14 y Prompt 15."""
 
     AUTORIZACION_INVALIDA = "AUTORIZACION_INVALIDA"
     SESION_EXPIRADA = "SESION_EXPIRADA"
@@ -216,6 +226,10 @@ class CodigoErrorAdministrativo(str, Enum):
     CODIGO_PRODUCTO_DUPLICADO = "CODIGO_PRODUCTO_DUPLICADO"
     CODIGO_PRODUCTO_INMUTABLE = "CODIGO_PRODUCTO_INMUTABLE"
     PRODUCTO_NO_EXISTE = "PRODUCTO_NO_EXISTE"
+    PRODUCTO_YA_INACTIVO = "PRODUCTO_YA_INACTIVO"
+    PRODUCTO_YA_ACTIVO = "PRODUCTO_YA_ACTIVO"
+    CONFIRMACION_CAMBIO_ESTADO_REQUERIDA = "CONFIRMACION_CAMBIO_ESTADO_REQUERIDA"
+    VALOR_ACTIVO_PRODUCTO_INVALIDO = "VALOR_ACTIVO_PRODUCTO_INVALIDO"
     NOMBRE_PRODUCTO_OBLIGATORIO = "NOMBRE_PRODUCTO_OBLIGATORIO"
     NOMBRE_PRODUCTO_INVALIDO = "NOMBRE_PRODUCTO_INVALIDO"
     DESCRIPCION_PRODUCTO_INVALIDA = "DESCRIPCION_PRODUCTO_INVALIDA"
@@ -358,6 +372,8 @@ class EspacioTrabajoAdminInventario:
     origen_remoto_confirmado: bool = True
     codigos_productos_creados: tuple[str, ...] = ()
     codigos_productos_editados: tuple[str, ...] = ()
+    productos_desactivados: tuple[str, ...] = ()
+    productos_reactivados: tuple[str, ...] = ()
     categorias_creadas: tuple[str, ...] = ()
     categorias_editadas: tuple[str, ...] = ()
     ubicaciones_creadas: tuple[str, ...] = ()
@@ -377,6 +393,8 @@ class EspacioTrabajoAdminInventario:
         if (
             self.codigos_productos_creados
             or self.codigos_productos_editados
+            or self.productos_desactivados
+            or self.productos_reactivados
             or self.categorias_creadas
             or self.categorias_editadas
             or self.ubicaciones_creadas
@@ -393,7 +411,10 @@ class EspacioTrabajoAdminInventario:
     @property
     def total_productos_modificados_localmente(self) -> int:
         return len(
-            set(self.codigos_productos_creados) | set(self.codigos_productos_editados)
+            set(self.codigos_productos_creados)
+            | set(self.codigos_productos_editados)
+            | set(self.productos_desactivados)
+            | set(self.productos_reactivados)
         )
 
     @property
@@ -439,7 +460,7 @@ class ResultadoCargaInventarioAdmin:
 
 @dataclass(frozen=True)
 class ResultadoOperacionProductoAdmin:
-    """Resultado estructurado de una operación local de creación o edición de producto."""
+    """Resultado estructurado de una operación local de creación, edición o cambio de estado de producto."""
 
     exito: bool
     estado: EstadoInventarioAdmin
@@ -452,6 +473,18 @@ class ResultadoOperacionProductoAdmin:
     tiene_cambios_pendientes: bool = False
     confirmado_en_github: bool = False
     es_cambio_local_temporal: bool = True
+
+    @property
+    def activo(self) -> str:
+        if isinstance(self.producto, Mapping):
+            return str(self.producto.get("activo_texto", self.producto.get("activo", "Sí")))
+        return ""
+
+    @property
+    def es_activo(self) -> bool:
+        if isinstance(self.producto, Mapping):
+            return bool(self.producto.get("es_activo", self.activo == "Sí"))
+        return False
 
 
 @dataclass(frozen=True)
@@ -1168,6 +1201,8 @@ def _construir_resumen_borrador_espacio(
         "inicializacion_oficial_autorizada": bool(espacio.inicializacion_oficial_autorizada),
         "codigos_creados": list(espacio.codigos_productos_creados),
         "codigos_editados": list(espacio.codigos_productos_editados),
+        "productos_desactivados": list(espacio.productos_desactivados),
+        "productos_reactivados": list(espacio.productos_reactivados),
         "categorias_creadas": list(espacio.categorias_creadas),
         "categorias_editadas": list(espacio.categorias_editadas),
         "ubicaciones_creadas": list(espacio.ubicaciones_creadas),
@@ -1457,6 +1492,8 @@ def descartar_cambios_locales_en_sesion(
         origen_remoto_confirmado=espacio.origen_remoto_confirmado,
         codigos_productos_creados=(),
         codigos_productos_editados=(),
+        productos_desactivados=(),
+        productos_reactivados=(),
         categorias_creadas=(),
         categorias_editadas=(),
         ubicaciones_creadas=(),
@@ -1503,6 +1540,7 @@ def consultar_productos_administrativos(
     estado: Mapping[str, Any],
     *,
     termino_filtro: str = "",
+    incluir_inactivos: bool = True,
     espacio_trabajo: EspacioTrabajoAdminInventario | None = None,
     contexto_dispositivo: ContextoDispositivo | None = None,
     reloj: ProveedorReloj | None = None,
@@ -1511,6 +1549,8 @@ def consultar_productos_administrativos(
 ) -> list[dict[str, Any]]:
     """Devuelve la lista estructurada de productos de la copia de trabajo para consulta administrativa (Sección 5.1).
 
+    Por defecto `incluir_inactivos=True` para que el administrador visualice tanto productos
+    activos como inactivos con indicación clara de su estado (RF-F-008, CA-F-007).
     Por defecto `registrar_actividad=False` para que un re-renderizado pasivo de la tabla
     administrativa en Streamlit no renueve automáticamente la sesión.
     """
@@ -1522,9 +1562,13 @@ def consultar_productos_administrativos(
         ahora_epoch=ahora_epoch,
         registrar_actividad=registrar_actividad,
     )
-    productos = obtener_productos_estructurados(espacio.inventario_trabajo)
+    productos = obtener_productos_estructurados(
+        espacio.inventario_trabajo, incluir_inactivos=incluir_inactivos
+    )
     creados_set = set(espacio.codigos_productos_creados)
     editados_set = set(espacio.codigos_productos_editados)
+    desactivados_set = set(espacio.productos_desactivados)
+    reactivados_set = set(espacio.productos_reactivados)
     filtro_norm = normalizar_texto_busqueda(termino_filtro)
 
     resultado: list[dict[str, Any]] = []
@@ -1537,29 +1581,41 @@ def consultar_productos_administrativos(
             if not (coincide_nombre or coincide_codigo):
                 continue
 
+        activo_texto = str(prod.get("activo", "Sí")).strip() or "Sí"
+        es_activo = bool(prod.get("es_activo", activo_texto == "Sí"))
         es_nuevo = cod in creados_set
         es_editado = cod in editados_set
-        tiene_cambio_local = es_nuevo or es_editado
+        es_desactivado = cod in desactivados_set
+        es_reactivado = cod in reactivados_set
+        tiene_cambio_local = es_nuevo or es_editado or es_desactivado or es_reactivado
         item_enriquecido = dict(prod)
+        item_enriquecido["activo"] = activo_texto
+        item_enriquecido["es_activo"] = es_activo
+        item_enriquecido["activo_texto"] = activo_texto
+        item_enriquecido["estado_producto_texto"] = "Activo" if es_activo else "Inactivo"
+        item_enriquecido["permite_desactivar"] = es_activo
+        item_enriquecido["permite_reactivar"] = not es_activo
         item_enriquecido["es_nuevo_local"] = es_nuevo
         item_enriquecido["es_editado_local"] = es_editado
+        item_enriquecido["es_desactivado_local"] = es_desactivado
+        item_enriquecido["es_reactivado_local"] = es_reactivado
         item_enriquecido["tiene_cambios_locales"] = tiene_cambio_local
         item_enriquecido["confirmado_en_github"] = (
             not tiene_cambio_local and espacio.origen_remoto_confirmado
         )
-        item_enriquecido["estado_registro_texto"] = (
-            "Nuevo (cambio local sin guardar)"
-            if es_nuevo
-            else (
-                "Editado (cambio local sin guardar)"
-                if es_editado
-                else (
-                    "Confirmado en remoto"
-                    if espacio.origen_remoto_confirmado
-                    else "Base demostrativa local (sin guardar)"
-                )
-            )
-        )
+        if es_desactivado and not es_activo:
+            texto_estado_reg = "Desactivado (cambio local sin guardar)"
+        elif es_reactivado and es_activo:
+            texto_estado_reg = "Reactivado (cambio local sin guardar)"
+        elif es_nuevo:
+            texto_estado_reg = "Nuevo (cambio local sin guardar)"
+        elif es_editado:
+            texto_estado_reg = "Editado (cambio local sin guardar)"
+        elif espacio.origen_remoto_confirmado:
+            texto_estado_reg = "Confirmado en remoto"
+        else:
+            texto_estado_reg = "Base demostrativa local (sin guardar)"
+        item_enriquecido["estado_registro_texto"] = texto_estado_reg
         resultado.append(item_enriquecido)
     return resultado
 
@@ -2991,6 +3047,7 @@ def crear_producto_local(
                 "Nombre": nombre_limpio,
                 "Categoria_ID": categoria_limpia,
                 "Descripcion": descripcion_limpia,
+                "Activo": "Sí",
             }
         ]
     )
@@ -3549,6 +3606,505 @@ def eliminar_asignacion_ubicacion_local(
     )
 
 
+def desactivar_producto_local(
+    estado: MutableMapping[str, Any],
+    *,
+    codigo_producto: Any,
+    confirmado: bool = True,
+    espacio_trabajo: EspacioTrabajoAdminInventario | None = None,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+    ahora_epoch: float | None = None,
+    _sincronizar_borrador: bool = True,
+    _publicar_en_estado: bool = True,
+    _registrar_actividad: bool = True,
+) -> ResultadoOperacionProductoAdmin:
+    """Desactiva un producto ('Activo=No') conservando todos sus datos y ubicaciones asignadas (RF-F-008, CA-F-007)."""
+    sesion, espacio = _obtener_espacio_trabajo_autorizado(
+        estado,
+        espacio_explicito=espacio_trabajo,
+        contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
+        ahora_epoch=ahora_epoch,
+        registrar_actividad=False,
+    )
+
+    if not confirmado:
+        raise ErrorValidacionAdministrativa(
+            "Debes confirmar explícitamente la desactivación del producto antes de aplicar el cambio.",
+            codigo=CodigoErrorAdministrativo.CONFIRMACION_CAMBIO_ESTADO_REQUERIDA,
+        )
+
+    codigo_limpio = _validar_codigo_producto_texto(codigo_producto)
+
+    hojas_actuales = espacio.inventario_trabajo.obtener_hojas()
+    df_productos_cand = hojas_actuales[HOJA_PRODUCTOS].copy(deep=True)
+    df_categorias_cand = hojas_actuales[HOJA_CATEGORIAS].copy(deep=True)
+    df_ubicaciones_cand = hojas_actuales[HOJA_UBICACIONES].copy(deep=True)
+    df_asignaciones_cand = hojas_actuales[HOJA_ASIGNACIONES].copy(deep=True)
+
+    mascara_producto = (
+        df_productos_cand["Codigo_Producto"].astype(str).str.strip() == codigo_limpio
+    )
+    if not mascara_producto.any():
+        raise ErrorValidacionAdministrativa(
+            f"El producto con código '{codigo_limpio}' no existe en el inventario.",
+            codigo=CodigoErrorAdministrativo.PRODUCTO_NO_EXISTE,
+        )
+
+    fila_actual = df_productos_cand.loc[mascara_producto].iloc[0]
+    estado_actual = normalizar_valor_activo(fila_actual.get("Activo", "Sí"))
+    if estado_actual == "No":
+        raise ErrorValidacionAdministrativa(
+            f"El producto '{codigo_limpio}' ya se encuentra desactivado.",
+            codigo=CodigoErrorAdministrativo.PRODUCTO_YA_INACTIVO,
+        )
+
+    if "Activo" not in df_productos_cand.columns:
+        df_productos_cand["Activo"] = "Sí"
+    df_productos_cand.loc[mascara_producto, "Activo"] = "No"
+
+    hojas_candidatas = {
+        HOJA_PRODUCTOS: df_productos_cand,
+        HOJA_CATEGORIAS: df_categorias_cand,
+        HOJA_UBICACIONES: df_ubicaciones_cand,
+        HOJA_ASIGNACIONES: df_asignaciones_cand,
+    }
+
+    try:
+        inventario_validado = construir_inventario_datos(hojas_candidatas)
+    except ErrorInventario as exc_inv:
+        raise _convertir_error_motor_inventario(exc_inv) from exc_inv
+
+    mascara_asig_prod = (
+        df_asignaciones_cand["Codigo_Producto"].astype(str).str.strip() == codigo_limpio
+    )
+    asignaciones_actuales = tuple(
+        {
+            "ubicacion_id": str(f["Ubicacion_ID"]).strip(),
+            "principal": str(f["Principal"]).strip(),
+        }
+        for _, f in df_asignaciones_cand.loc[mascara_asig_prod].iterrows()
+    )
+
+    desactivados_nuevos = (
+        (*espacio.productos_desactivados, codigo_limpio)
+        if codigo_limpio not in espacio.productos_desactivados
+        else espacio.productos_desactivados
+    )
+    reactivados_nuevos = tuple(
+        c for c in espacio.productos_reactivados if c != codigo_limpio
+    )
+    codigos_editados_nuevos = (
+        (*espacio.codigos_productos_editados, codigo_limpio)
+        if (
+            codigo_limpio not in espacio.codigos_productos_creados
+            and codigo_limpio not in espacio.codigos_productos_editados
+        )
+        else espacio.codigos_productos_editados
+    )
+
+    operacion = OperacionLocalInventario(
+        tipo_operacion="DESACTIVAR_PRODUCTO",
+        codigo_producto=codigo_limpio,
+        nombre=str(fila_actual["Nombre"]).strip(),
+        categoria_id=str(fila_actual["Categoria_ID"]).strip(),
+        descripcion=str(fila_actual["Descripcion"]).strip(),
+        asignaciones=asignaciones_actuales,
+        realizada_en_epoch=sesion.ultima_actividad_epoch,
+        detalles_operacion={
+            "codigo_producto": codigo_limpio,
+            "activo": "No",
+        },
+    )
+    historial_nuevo = (*espacio.historial_operaciones_locales, operacion)
+
+    es_demo_cand = espacio.es_copia_demostrativa or contiene_datos_demostrativos(inventario_validado)
+    espacio_candidato = EspacioTrabajoAdminInventario(
+        inventario_original=espacio.inventario_original,
+        inventario_trabajo=inventario_validado,
+        sha_base_remoto=espacio.sha_base_remoto,
+        origen_remoto_confirmado=espacio.origen_remoto_confirmado,
+        usuario_propietario=espacio.usuario_propietario,
+        id_sesion_propietaria=espacio.id_sesion_propietaria,
+        creado_en_epoch=espacio.creado_en_epoch,
+        actualizado_en_epoch=sesion.ultima_actividad_epoch,
+        codigos_productos_creados=espacio.codigos_productos_creados,
+        codigos_productos_editados=codigos_editados_nuevos,
+        productos_desactivados=desactivados_nuevos,
+        productos_reactivados=reactivados_nuevos,
+        categorias_creadas=espacio.categorias_creadas,
+        categorias_editadas=espacio.categorias_editadas,
+        ubicaciones_creadas=espacio.ubicaciones_creadas,
+        ubicaciones_editadas=espacio.ubicaciones_editadas,
+        ubicaciones_desactivadas=espacio.ubicaciones_desactivadas,
+        historial_operaciones_locales=historial_nuevo,
+        es_copia_demostrativa=es_demo_cand,
+        inicializacion_oficial_autorizada=espacio.inicializacion_oficial_autorizada and not es_demo_cand,
+    )
+
+    if _sincronizar_borrador and isinstance(estado, MutableMapping):
+        _sincronizar_borrador_automatico_en_sesion(
+            estado,
+            espacio_candidato,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+            ahora_epoch=ahora_epoch,
+        )
+        sesion_post = estado.get(autenticacion.CLAVE_SESION_ADMIN)
+        if isinstance(sesion_post, EstadoSesionAdmin):
+            sesion = sesion_post
+    elif _registrar_actividad and isinstance(estado, MutableMapping):
+        sesion = registrar_actividad_administrativa(
+            estado,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+            ahora_epoch=ahora_epoch,
+        )
+
+    espacio.inventario_trabajo = inventario_validado
+    espacio.codigos_productos_editados = codigos_editados_nuevos
+    espacio.productos_desactivados = desactivados_nuevos
+    espacio.productos_reactivados = reactivados_nuevos
+    espacio.historial_operaciones_locales = historial_nuevo
+    espacio.actualizado_en_epoch = sesion.ultima_actividad_epoch
+    espacio.es_copia_demostrativa = es_demo_cand
+    espacio.inicializacion_oficial_autorizada = (
+        espacio.inicializacion_oficial_autorizada and not es_demo_cand
+    )
+
+    if _publicar_en_estado and isinstance(estado, MutableMapping):
+        estado[CLAVE_ESPACIO_TRABAJO_ADMIN] = espacio
+
+    producto_detalle = consultar_producto_administrativo_por_codigo(
+        estado,
+        codigo_limpio,
+        espacio_trabajo=espacio,
+        contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
+        ahora_epoch=ahora_epoch,
+        registrar_actividad=False,
+    )
+    return ResultadoOperacionProductoAdmin(
+        exito=True,
+        estado=EstadoInventarioAdmin.MODIFICACION_LOCAL_VALIDA,
+        mensaje_usuario=MENSAJE_DESACTIVACION_PRODUCTO_LOCAL_EXITOSA,
+        codigo_producto=codigo_limpio,
+        producto=producto_detalle,
+        espacio_trabajo=espacio,
+        sha_base_remoto=espacio.sha_base_remoto,
+        tiene_cambios_pendientes=espacio.tiene_cambios_locales_pendientes,
+        confirmado_en_github=False,
+        es_cambio_local_temporal=True,
+    )
+
+
+def reactivar_producto_local(
+    estado: MutableMapping[str, Any],
+    *,
+    codigo_producto: Any,
+    confirmado: bool = True,
+    espacio_trabajo: EspacioTrabajoAdminInventario | None = None,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+    ahora_epoch: float | None = None,
+    _sincronizar_borrador: bool = True,
+    _publicar_en_estado: bool = True,
+    _registrar_actividad: bool = True,
+) -> ResultadoOperacionProductoAdmin:
+    """Reactiva un producto ('Activo=Sí') tras verificar la integridad de su categoría y ubicaciones (RF-F-008, CA-F-007)."""
+    sesion, espacio = _obtener_espacio_trabajo_autorizado(
+        estado,
+        espacio_explicito=espacio_trabajo,
+        contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
+        ahora_epoch=ahora_epoch,
+        registrar_actividad=False,
+    )
+
+    if not confirmado:
+        raise ErrorValidacionAdministrativa(
+            "Debes confirmar explícitamente la reactivación del producto antes de aplicar el cambio.",
+            codigo=CodigoErrorAdministrativo.CONFIRMACION_CAMBIO_ESTADO_REQUERIDA,
+        )
+
+    codigo_limpio = _validar_codigo_producto_texto(codigo_producto)
+
+    hojas_actuales = espacio.inventario_trabajo.obtener_hojas()
+    df_productos_cand = hojas_actuales[HOJA_PRODUCTOS].copy(deep=True)
+    df_categorias_cand = hojas_actuales[HOJA_CATEGORIAS].copy(deep=True)
+    df_ubicaciones_cand = hojas_actuales[HOJA_UBICACIONES].copy(deep=True)
+    df_asignaciones_cand = hojas_actuales[HOJA_ASIGNACIONES].copy(deep=True)
+
+    mascara_producto = (
+        df_productos_cand["Codigo_Producto"].astype(str).str.strip() == codigo_limpio
+    )
+    if not mascara_producto.any():
+        raise ErrorValidacionAdministrativa(
+            f"El producto con código '{codigo_limpio}' no existe en el inventario.",
+            codigo=CodigoErrorAdministrativo.PRODUCTO_NO_EXISTE,
+        )
+
+    fila_actual = df_productos_cand.loc[mascara_producto].iloc[0]
+    estado_actual = normalizar_valor_activo(fila_actual.get("Activo", "Sí"))
+    if estado_actual == "Sí":
+        raise ErrorValidacionAdministrativa(
+            f"El producto '{codigo_limpio}' ya se encuentra activo.",
+            codigo=CodigoErrorAdministrativo.PRODUCTO_YA_ACTIVO,
+        )
+
+    # Validar integridad del producto antes de reactivar (Sección 3 de P15)
+    cat_id_prod = str(fila_actual.get("Categoria_ID", "")).strip()
+    _validar_categoria_existente(cat_id_prod, df_categorias_cand)
+
+    mascara_asig_prod = (
+        df_asignaciones_cand["Codigo_Producto"].astype(str).str.strip() == codigo_limpio
+    )
+    df_asig_prod = df_asignaciones_cand.loc[mascara_asig_prod]
+    if df_asig_prod.empty:
+        raise ErrorValidacionAdministrativa(
+            f"No es posible reactivar el producto '{codigo_limpio}' porque no tiene ninguna ubicación asignada.",
+            codigo=CodigoErrorAdministrativo.PRODUCTO_SIN_UBICACION,
+        )
+
+    ubicaciones_registradas: set[str] = set()
+    ubicaciones_inactivas: set[str] = set()
+    for _, fila_u in df_ubicaciones_cand.iterrows():
+        u_id = str(fila_u["Ubicacion_ID"]).strip()
+        ubicaciones_registradas.add(u_id)
+        try:
+            act_u = normalizar_valor_activo(fila_u.get("Activo", "Sí"))
+        except ErrorValorActivoInvalido:
+            act_u = "No"
+        if act_u == "No":
+            ubicaciones_inactivas.add(u_id)
+
+    ubicaciones_vistas_prod: set[str] = set()
+    total_principales = 0
+    asignaciones_actuales: list[dict[str, str]] = []
+    for _, fila_a in df_asig_prod.iterrows():
+        u_id = str(fila_a.get("Ubicacion_ID", "")).strip()
+        if not u_id or u_id not in ubicaciones_registradas:
+            raise ErrorValidacionAdministrativa(
+                f"No es posible reactivar el producto '{codigo_limpio}' porque la ubicación asignada '{u_id}' no existe en el catálogo de Ubicaciones.",
+                codigo=CodigoErrorAdministrativo.UBICACION_INEXISTENTE,
+            )
+        if u_id in ubicaciones_inactivas:
+            raise ErrorValidacionAdministrativa(
+                f"No es posible reactivar el producto '{codigo_limpio}' porque la ubicación asignada '{u_id}' se encuentra inactiva.",
+                codigo=CodigoErrorAdministrativo.UBICACION_INACTIVA,
+            )
+        if u_id in ubicaciones_vistas_prod:
+            raise ErrorValidacionAdministrativa(
+                f"No es posible reactivar el producto '{codigo_limpio}' porque presenta una asignación duplicada para la ubicación '{u_id}'.",
+                codigo=CodigoErrorAdministrativo.ASIGNACION_DUPLICADA,
+            )
+        ubicaciones_vistas_prod.add(u_id)
+
+        try:
+            prin_norm = normalizar_valor_principal(fila_a.get("Principal", ""))
+        except ErrorValorPrincipalInvalido as exc_prin:
+            raise ErrorValidacionAdministrativa(
+                f"No es posible reactivar el producto '{codigo_limpio}' porque tiene un valor inválido en el campo 'Principal' para la ubicación '{u_id}'.",
+                codigo=CodigoErrorAdministrativo.SIN_UBICACION_PRINCIPAL,
+            ) from exc_prin
+
+        if prin_norm == "Sí":
+            total_principales += 1
+        asignaciones_actuales.append({"ubicacion_id": u_id, "principal": prin_norm})
+
+    if total_principales == 0:
+        raise ErrorValidacionAdministrativa(
+            f"No es posible reactivar el producto '{codigo_limpio}' porque no tiene ninguna ubicación marcada como principal.",
+            codigo=CodigoErrorAdministrativo.SIN_UBICACION_PRINCIPAL,
+        )
+    if total_principales > 1:
+        raise ErrorValidacionAdministrativa(
+            f"No es posible reactivar el producto '{codigo_limpio}' porque tiene {total_principales} ubicaciones marcadas como principales; debe tener exactamente una.",
+            codigo=CodigoErrorAdministrativo.UBICACION_PRINCIPAL_MULTIPLE,
+        )
+
+    if "Activo" not in df_productos_cand.columns:
+        df_productos_cand["Activo"] = "Sí"
+    df_productos_cand.loc[mascara_producto, "Activo"] = "Sí"
+
+    hojas_candidatas = {
+        HOJA_PRODUCTOS: df_productos_cand,
+        HOJA_CATEGORIAS: df_categorias_cand,
+        HOJA_UBICACIONES: df_ubicaciones_cand,
+        HOJA_ASIGNACIONES: df_asignaciones_cand,
+    }
+
+    try:
+        inventario_validado = construir_inventario_datos(hojas_candidatas)
+    except ErrorInventario as exc_inv:
+        raise _convertir_error_motor_inventario(exc_inv) from exc_inv
+
+    reactivados_nuevos = (
+        (*espacio.productos_reactivados, codigo_limpio)
+        if codigo_limpio not in espacio.productos_reactivados
+        else espacio.productos_reactivados
+    )
+    desactivados_nuevos = tuple(
+        c for c in espacio.productos_desactivados if c != codigo_limpio
+    )
+    codigos_editados_nuevos = (
+        (*espacio.codigos_productos_editados, codigo_limpio)
+        if (
+            codigo_limpio not in espacio.codigos_productos_creados
+            and codigo_limpio not in espacio.codigos_productos_editados
+        )
+        else espacio.codigos_productos_editados
+    )
+
+    operacion = OperacionLocalInventario(
+        tipo_operacion="REACTIVAR_PRODUCTO",
+        codigo_producto=codigo_limpio,
+        nombre=str(fila_actual["Nombre"]).strip(),
+        categoria_id=cat_id_prod,
+        descripcion=str(fila_actual["Descripcion"]).strip(),
+        asignaciones=tuple(asignaciones_actuales),
+        realizada_en_epoch=sesion.ultima_actividad_epoch,
+        detalles_operacion={
+            "codigo_producto": codigo_limpio,
+            "activo": "Sí",
+        },
+    )
+    historial_nuevo = (*espacio.historial_operaciones_locales, operacion)
+
+    es_demo_cand = espacio.es_copia_demostrativa or contiene_datos_demostrativos(inventario_validado)
+    espacio_candidato = EspacioTrabajoAdminInventario(
+        inventario_original=espacio.inventario_original,
+        inventario_trabajo=inventario_validado,
+        sha_base_remoto=espacio.sha_base_remoto,
+        origen_remoto_confirmado=espacio.origen_remoto_confirmado,
+        usuario_propietario=espacio.usuario_propietario,
+        id_sesion_propietaria=espacio.id_sesion_propietaria,
+        creado_en_epoch=espacio.creado_en_epoch,
+        actualizado_en_epoch=sesion.ultima_actividad_epoch,
+        codigos_productos_creados=espacio.codigos_productos_creados,
+        codigos_productos_editados=codigos_editados_nuevos,
+        productos_desactivados=desactivados_nuevos,
+        productos_reactivados=reactivados_nuevos,
+        categorias_creadas=espacio.categorias_creadas,
+        categorias_editadas=espacio.categorias_editadas,
+        ubicaciones_creadas=espacio.ubicaciones_creadas,
+        ubicaciones_editadas=espacio.ubicaciones_editadas,
+        ubicaciones_desactivadas=espacio.ubicaciones_desactivadas,
+        historial_operaciones_locales=historial_nuevo,
+        es_copia_demostrativa=es_demo_cand,
+        inicializacion_oficial_autorizada=espacio.inicializacion_oficial_autorizada and not es_demo_cand,
+    )
+
+    if _sincronizar_borrador and isinstance(estado, MutableMapping):
+        _sincronizar_borrador_automatico_en_sesion(
+            estado,
+            espacio_candidato,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+            ahora_epoch=ahora_epoch,
+        )
+        sesion_post = estado.get(autenticacion.CLAVE_SESION_ADMIN)
+        if isinstance(sesion_post, EstadoSesionAdmin):
+            sesion = sesion_post
+    elif _registrar_actividad and isinstance(estado, MutableMapping):
+        sesion = registrar_actividad_administrativa(
+            estado,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+            ahora_epoch=ahora_epoch,
+        )
+
+    espacio.inventario_trabajo = inventario_validado
+    espacio.codigos_productos_editados = codigos_editados_nuevos
+    espacio.productos_desactivados = desactivados_nuevos
+    espacio.productos_reactivados = reactivados_nuevos
+    espacio.historial_operaciones_locales = historial_nuevo
+    espacio.actualizado_en_epoch = sesion.ultima_actividad_epoch
+    espacio.es_copia_demostrativa = es_demo_cand
+    espacio.inicializacion_oficial_autorizada = (
+        espacio.inicializacion_oficial_autorizada and not es_demo_cand
+    )
+
+    if _publicar_en_estado and isinstance(estado, MutableMapping):
+        estado[CLAVE_ESPACIO_TRABAJO_ADMIN] = espacio
+
+    producto_detalle = consultar_producto_administrativo_por_codigo(
+        estado,
+        codigo_limpio,
+        espacio_trabajo=espacio,
+        contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
+        ahora_epoch=ahora_epoch,
+        registrar_actividad=False,
+    )
+    return ResultadoOperacionProductoAdmin(
+        exito=True,
+        estado=EstadoInventarioAdmin.MODIFICACION_LOCAL_VALIDA,
+        mensaje_usuario=MENSAJE_REACTIVACION_PRODUCTO_LOCAL_EXITOSA,
+        codigo_producto=codigo_limpio,
+        producto=producto_detalle,
+        espacio_trabajo=espacio,
+        sha_base_remoto=espacio.sha_base_remoto,
+        tiene_cambios_pendientes=espacio.tiene_cambios_locales_pendientes,
+        confirmado_en_github=False,
+        es_cambio_local_temporal=True,
+    )
+
+
+def cambiar_estado_producto_local(
+    estado: MutableMapping[str, Any],
+    *,
+    codigo_producto: Any,
+    activo: Any,
+    confirmado: bool = True,
+    espacio_trabajo: EspacioTrabajoAdminInventario | None = None,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+    ahora_epoch: float | None = None,
+    _sincronizar_borrador: bool = True,
+    _publicar_en_estado: bool = True,
+    _registrar_actividad: bool = True,
+) -> ResultadoOperacionProductoAdmin:
+    """Cambia el estado lógico ('Sí'/'No') de un producto validando confirmación e integridad (RF-F-008, CA-F-007)."""
+    if isinstance(activo, bool):
+        activo_norm = "Sí" if activo else "No"
+    else:
+        try:
+            activo_norm = normalizar_valor_activo(activo)
+        except ErrorValorActivoInvalido as exc_act:
+            raise ErrorValidacionAdministrativa(
+                f"Valor inválido '{activo}' para el estado del producto. Solo se admiten 'Sí' y 'No'.",
+                codigo=CodigoErrorAdministrativo.VALOR_ACTIVO_PRODUCTO_INVALIDO,
+            ) from exc_act
+
+    if activo_norm == "No":
+        return desactivar_producto_local(
+            estado,
+            codigo_producto=codigo_producto,
+            confirmado=confirmado,
+            espacio_trabajo=espacio_trabajo,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+            ahora_epoch=ahora_epoch,
+            _sincronizar_borrador=_sincronizar_borrador,
+            _publicar_en_estado=_publicar_en_estado,
+            _registrar_actividad=_registrar_actividad,
+        )
+    return reactivar_producto_local(
+        estado,
+        codigo_producto=codigo_producto,
+        confirmado=confirmado,
+        espacio_trabajo=espacio_trabajo,
+        contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
+        ahora_epoch=ahora_epoch,
+        _sincronizar_borrador=_sincronizar_borrador,
+        _publicar_en_estado=_publicar_en_estado,
+        _registrar_actividad=_registrar_actividad,
+    )
+
+
 def guardar_borrador_formulario_admin(
     estado: MutableMapping[str, Any],
     datos_formulario: Mapping[str, Any],
@@ -4052,6 +4608,36 @@ def restaurar_borrador_en_espacio_trabajo_admin(
                     desactivar_ubicacion_local(
                         estado,
                         ubicacion_id=det_map.get("ubicacion_id", cod_op),
+                        espacio_trabajo=espacio_preparacion,
+                        contexto_dispositivo=contexto_dispositivo,
+                        reloj=reloj,
+                        ahora_epoch=ahora_epoch,
+                        _sincronizar_borrador=False,
+                        _publicar_en_estado=False,
+                        _registrar_actividad=False,
+                    )
+                elif tipo_op == "DESACTIVAR_PRODUCTO":
+                    detalles_op = op_raw.get("detalles_operacion")
+                    det_map = detalles_op if isinstance(detalles_op, Mapping) else {}
+                    desactivar_producto_local(
+                        estado,
+                        codigo_producto=det_map.get("codigo_producto", cod_op),
+                        confirmado=True,
+                        espacio_trabajo=espacio_preparacion,
+                        contexto_dispositivo=contexto_dispositivo,
+                        reloj=reloj,
+                        ahora_epoch=ahora_epoch,
+                        _sincronizar_borrador=False,
+                        _publicar_en_estado=False,
+                        _registrar_actividad=False,
+                    )
+                elif tipo_op == "REACTIVAR_PRODUCTO":
+                    detalles_op = op_raw.get("detalles_operacion")
+                    det_map = detalles_op if isinstance(detalles_op, Mapping) else {}
+                    reactivar_producto_local(
+                        estado,
+                        codigo_producto=det_map.get("codigo_producto", cod_op),
+                        confirmado=True,
                         espacio_trabajo=espacio_preparacion,
                         contexto_dispositivo=contexto_dispositivo,
                         reloj=reloj,

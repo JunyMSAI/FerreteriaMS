@@ -30,13 +30,14 @@ HOJA_UBICACIONES = "Ubicaciones"
 HOJA_ASIGNACIONES = "Asignaciones"
 
 ESQUEMA_HOJAS: dict[str, list[str]] = {
-    HOJA_PRODUCTOS: ["Codigo_Producto", "Nombre", "Categoria_ID", "Descripcion"],
+    HOJA_PRODUCTOS: ["Codigo_Producto", "Nombre", "Categoria_ID", "Descripcion", "Activo"],
     HOJA_CATEGORIAS: ["Categoria_ID", "Nombre_Categoria"],
     HOJA_UBICACIONES: ["Ubicacion_ID", "Rack", "Columna", "Nivel", "Posicion", "Activo"],
     HOJA_ASIGNACIONES: ["Codigo_Producto", "Ubicacion_ID", "Principal"],
 }
 
 COLUMNAS_OPCIONALES_RETROCOMPATIBLES: dict[str, frozenset[str]] = {
+    HOJA_PRODUCTOS: frozenset({"Activo"}),
     HOJA_UBICACIONES: frozenset({"Activo"}),
 }
 
@@ -306,13 +307,23 @@ class InventarioDatos:
             HOJA_ASIGNACIONES: self.asignaciones.copy(),
         }
 
-    def obtener_productos_estructurados(self) -> list[dict[str, Any]]:
-        """Prepara la vista estructurada de productos para las funcionalidades de búsqueda."""
-        return obtener_productos_estructurados(self)
+    def obtener_productos_estructurados(
+        self, *, incluir_inactivos: bool = True
+    ) -> list[dict[str, Any]]:
+        """Prepara la vista estructurada de productos para las funcionalidades de búsqueda y administración."""
+        return obtener_productos_estructurados(self, incluir_inactivos=incluir_inactivos)
 
-    def obtener_producto_por_codigo(self, codigo_producto: str) -> dict[str, Any] | None:
+    def obtener_productos_activos_estructurados(self) -> list[dict[str, Any]]:
+        """Devuelve únicamente los productos activos con su estructura completa."""
+        return obtener_productos_activos_estructurados(self)
+
+    def obtener_producto_por_codigo(
+        self, codigo_producto: str, *, incluir_inactivos: bool = True
+    ) -> dict[str, Any] | None:
         """Devuelve la estructura detallada de un producto por su código exacto."""
-        return obtener_producto_por_codigo(self, codigo_producto)
+        return obtener_producto_por_codigo(
+            self, codigo_producto, incluir_inactivos=incluir_inactivos
+        )
 
     def construir_tabla_consulta(self) -> pd.DataFrame:
         """Devuelve un DataFrame relacional consolidado de productos, categorías y ubicaciones."""
@@ -681,6 +692,7 @@ def validar_inventario(
         cod_prod = fila["Codigo_Producto"]
         nombre_prod = fila["Nombre"]
         cat_id = fila["Categoria_ID"]
+        val_activo_prod = fila.get("Activo", "Sí")
 
         if not cod_prod:
             errores.append(
@@ -740,6 +752,23 @@ def validar_inventario(
                     fila=num_fila,
                     campo="Categoria_ID",
                     valor=cat_id,
+                )
+            )
+
+        try:
+            normalizar_valor_activo(val_activo_prod)
+        except ErrorValorActivoInvalido:
+            errores.append(
+                DetalleErrorInventario(
+                    codigo=CodigoErrorInventario.VALOR_ACTIVO_INVALIDO,
+                    mensaje=(
+                        f"Fila {num_fila} en '{HOJA_PRODUCTOS}': valor inválido '{val_activo_prod}' "
+                        f"en 'Activo'. Solo se admiten los estados lógicos 'Sí' y 'No'."
+                    ),
+                    hoja=HOJA_PRODUCTOS,
+                    fila=num_fila,
+                    campo="Activo",
+                    valor=val_activo_prod,
                 )
             )
 
@@ -933,6 +962,7 @@ def construir_inventario_datos(hojas: Mapping[str, pd.DataFrame]) -> InventarioD
     df_productos = _normalizar_dataframe_texto(
         hojas[HOJA_PRODUCTOS], ESQUEMA_HOJAS[HOJA_PRODUCTOS]
     )
+    df_productos["Activo"] = df_productos["Activo"].map(normalizar_valor_activo)
     df_categorias = _normalizar_dataframe_texto(
         hojas[HOJA_CATEGORIAS], ESQUEMA_HOJAS[HOJA_CATEGORIAS]
     )
@@ -1033,7 +1063,9 @@ def formatear_ubicacion_fisica(ubicacion: Mapping[str, str]) -> str:
     )
 
 
-def obtener_productos_estructurados(inventario: InventarioDatos) -> list[dict[str, Any]]:
+def obtener_productos_estructurados(
+    inventario: InventarioDatos, *, incluir_inactivos: bool = True
+) -> list[dict[str, Any]]:
     """Prepara una lista estructurada de productos con categoría, ubicación principal y secundarias."""
     mapa_categorias: dict[str, str] = dict(
         zip(inventario.categorias["Categoria_ID"], inventario.categorias["Nombre_Categoria"])
@@ -1062,6 +1094,16 @@ def obtener_productos_estructurados(inventario: InventarioDatos) -> list[dict[st
     for _, fila_p in inventario.productos.iterrows():
         cod_prod = fila_p["Codigo_Producto"]
         cat_id = fila_p["Categoria_ID"]
+        val_activo_bruto = fila_p.get("Activo", "Sí") if "Activo" in fila_p else "Sí"
+        try:
+            activo_texto = normalizar_valor_activo(val_activo_bruto)
+        except ErrorValorActivoInvalido:
+            activo_texto = "Sí"
+        es_activo = activo_texto == "Sí"
+
+        if not incluir_inactivos and not es_activo:
+            continue
+
         principal_info: dict[str, Any] | None = None
         secundarias_info: list[dict[str, Any]] = []
 
@@ -1083,6 +1125,8 @@ def obtener_productos_estructurados(inventario: InventarioDatos) -> list[dict[st
                 "categoria_id": cat_id,
                 "nombre_categoria": mapa_categorias.get(cat_id, ""),
                 "descripcion": fila_p["Descripcion"],
+                "activo": activo_texto,
+                "es_activo": es_activo,
                 "ubicacion_principal": principal_info,
                 "ubicaciones_secundarias": secundarias_info,
                 "todas_las_ubicaciones": todas,
@@ -1092,12 +1136,19 @@ def obtener_productos_estructurados(inventario: InventarioDatos) -> list[dict[st
     return resultado
 
 
+def obtener_productos_activos_estructurados(inventario: InventarioDatos) -> list[dict[str, Any]]:
+    """Prepara la lista estructurada exclusivamente con los productos activos."""
+    return obtener_productos_estructurados(inventario, incluir_inactivos=False)
+
+
 def obtener_producto_por_codigo(
-    inventario: InventarioDatos, codigo_producto: str
+    inventario: InventarioDatos, codigo_producto: str, *, incluir_inactivos: bool = True
 ) -> dict[str, Any] | None:
     """Busca y devuelve la estructura completa de un producto por su código exacto."""
     codigo_limpio = _limpiar_texto(codigo_producto)
-    for prod in obtener_productos_estructurados(inventario):
+    for prod in obtener_productos_estructurados(
+        inventario, incluir_inactivos=incluir_inactivos
+    ):
         if prod["codigo_producto"] == codigo_limpio:
             return prod
     return None

@@ -50,6 +50,7 @@ from administracion_productos import (  # noqa: E402
     MENSAJE_CREACION_LOCAL_EXITOSA,
     MENSAJE_CREACION_UBICACION_LOCAL_EXITOSA,
     MENSAJE_DATOS_REMOTOS_INVALIDOS_ADMIN,
+    MENSAJE_DESACTIVACION_PRODUCTO_LOCAL_EXITOSA,
     MENSAJE_DESACTIVACION_UBICACION_LOCAL_EXITOSA,
     MENSAJE_EDICION_CATEGORIA_LOCAL_EXITOSA,
     MENSAJE_EDICION_LOCAL_EXITOSA,
@@ -58,6 +59,7 @@ from administracion_productos import (  # noqa: E402
     MENSAJE_ERROR_CONEXION_ADMIN,
     MENSAJE_INVENTARIO_DISPONIBLE_EDICION_LOCAL,
     MENSAJE_INVENTARIO_REMOTO_INEXISTENTE_ADMIN,
+    MENSAJE_REACTIVACION_PRODUCTO_LOCAL_EXITOSA,
     AsignacionUbicacionEntrada,
     CodigoErrorAdministrativo,
     ErrorAdministracionInventario,
@@ -70,6 +72,7 @@ from administracion_productos import (  # noqa: E402
     ResultadoOperacionCategoriaAdmin,
     ResultadoOperacionProductoAdmin,
     ResultadoOperacionUbicacionAdmin,
+    cambiar_estado_producto_local,
     cambiar_ubicacion_principal_local,
     cargar_inventario_administrativo_en_sesion,
     consultar_categoria_administrativa_por_id,
@@ -82,6 +85,7 @@ from administracion_productos import (  # noqa: E402
     crear_categoria_local,
     crear_producto_local,
     crear_ubicacion_local,
+    desactivar_producto_local,
     desactivar_ubicacion_local,
     descartar_cambios_locales_en_sesion,
     editar_categoria_local,
@@ -95,6 +99,7 @@ from administracion_productos import (  # noqa: E402
     obtener_catalogo_categorias_admin,
     obtener_catalogo_ubicaciones_admin,
     preparar_paquete_publicacion_futura_p10,
+    reactivar_producto_local,
     rechazar_modificacion_catalogo_predefinido,
     renombrar_categoria_local,
     restaurar_borrador_en_espacio_trabajo_admin,
@@ -1264,6 +1269,185 @@ def ejecutar_desactivacion_ubicacion_en_sesion(
         )
 
 
+def ejecutar_desactivacion_producto_en_sesion(
+    *,
+    codigo_producto: Any,
+    confirmado: bool = True,
+    estado: MutableMapping[str, Any] | None = None,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+) -> ResultadoOperacionProductoAdmin:
+    """Desactiva localmente un producto (`Activo = 'No'`) conservando sus datos y asignaciones."""
+    destino = inicializar_estado_sesion(estado)
+    try:
+        res = desactivar_producto_local(
+            destino,
+            codigo_producto=codigo_producto,
+            confirmado=confirmado,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+        )
+        destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
+            "tipo": "success",
+            "codigo": res.estado.value,
+            "mensaje": res.mensaje_usuario,
+        }
+        destino[CLAVE_PRODUCTO_ADMIN_SELECCIONADO] = res.codigo_producto
+        return res
+    except ErrorAdministracionInventario as exc_admin:
+        destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
+            "tipo": "error",
+            "codigo": exc_admin.codigo.value,
+            "mensaje": exc_admin.mensaje,
+        }
+        return ResultadoOperacionProductoAdmin(
+            exito=False,
+            estado=exc_admin.estado,
+            mensaje_usuario=exc_admin.mensaje,
+            codigo_error=exc_admin.codigo,
+            confirmado_en_github=False,
+            es_cambio_local_temporal=True,
+        )
+    except ErrorAutorizacionAdmin as exc_auth:
+        destino[CLAVE_MENSAJE_AUTH_ADMIN] = {
+            "tipo": "error",
+            "codigo": exc_auth.codigo.value,
+            "mensaje": exc_auth.mensaje,
+        }
+        return ResultadoOperacionProductoAdmin(
+            exito=False,
+            estado=EstadoInventarioAdmin.SESION_ADMINISTRATIVA_EXPIRADA
+            if exc_auth.codigo == CodigoResultadoAutenticacion.SESION_EXPIRADA
+            else EstadoInventarioAdmin.ERROR_VALIDACION_ADMINISTRATIVA,
+            mensaje_usuario=exc_auth.mensaje,
+            codigo_error=CodigoErrorAdministrativo.SESION_EXPIRADA
+            if exc_auth.codigo == CodigoResultadoAutenticacion.SESION_EXPIRADA
+            else CodigoErrorAdministrativo.AUTORIZACION_INVALIDA,
+            confirmado_en_github=False,
+            es_cambio_local_temporal=True,
+        )
+
+
+def ejecutar_reactivacion_producto_en_sesion(
+    *,
+    codigo_producto: Any,
+    confirmado: bool = True,
+    estado: MutableMapping[str, Any] | None = None,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+) -> ResultadoOperacionProductoAdmin:
+    """Reactiva localmente un producto (`Activo = 'Sí'`) validando su integridad."""
+    destino = inicializar_estado_sesion(estado)
+    try:
+        res = reactivar_producto_local(
+            destino,
+            codigo_producto=codigo_producto,
+            confirmado=confirmado,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+        )
+        destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
+            "tipo": "success",
+            "codigo": res.estado.value,
+            "mensaje": res.mensaje_usuario,
+        }
+        destino[CLAVE_PRODUCTO_ADMIN_SELECCIONADO] = res.codigo_producto
+        return res
+    except ErrorAdministracionInventario as exc_admin:
+        destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
+            "tipo": "error",
+            "codigo": exc_admin.codigo.value,
+            "mensaje": exc_admin.mensaje,
+        }
+        return ResultadoOperacionProductoAdmin(
+            exito=False,
+            estado=exc_admin.estado,
+            mensaje_usuario=exc_admin.mensaje,
+            codigo_error=exc_admin.codigo,
+            confirmado_en_github=False,
+            es_cambio_local_temporal=True,
+        )
+    except ErrorAutorizacionAdmin as exc_auth:
+        destino[CLAVE_MENSAJE_AUTH_ADMIN] = {
+            "tipo": "error",
+            "codigo": exc_auth.codigo.value,
+            "mensaje": exc_auth.mensaje,
+        }
+        return ResultadoOperacionProductoAdmin(
+            exito=False,
+            estado=EstadoInventarioAdmin.SESION_ADMINISTRATIVA_EXPIRADA
+            if exc_auth.codigo == CodigoResultadoAutenticacion.SESION_EXPIRADA
+            else EstadoInventarioAdmin.ERROR_VALIDACION_ADMINISTRATIVA,
+            mensaje_usuario=exc_auth.mensaje,
+            codigo_error=CodigoErrorAdministrativo.SESION_EXPIRADA
+            if exc_auth.codigo == CodigoResultadoAutenticacion.SESION_EXPIRADA
+            else CodigoErrorAdministrativo.AUTORIZACION_INVALIDA,
+            confirmado_en_github=False,
+            es_cambio_local_temporal=True,
+        )
+
+
+def ejecutar_cambio_estado_producto_en_sesion(
+    *,
+    codigo_producto: Any,
+    activo: Any,
+    confirmado: bool = True,
+    estado: MutableMapping[str, Any] | None = None,
+    contexto_dispositivo: ContextoDispositivo | None = None,
+    reloj: ProveedorReloj | None = None,
+) -> ResultadoOperacionProductoAdmin:
+    """Cambia el estado lógico ('Sí'/'No') de un producto en la sesión administrativa."""
+    destino = inicializar_estado_sesion(estado)
+    try:
+        res = cambiar_estado_producto_local(
+            destino,
+            codigo_producto=codigo_producto,
+            activo=activo,
+            confirmado=confirmado,
+            contexto_dispositivo=contexto_dispositivo,
+            reloj=reloj,
+        )
+        destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
+            "tipo": "success",
+            "codigo": res.estado.value,
+            "mensaje": res.mensaje_usuario,
+        }
+        destino[CLAVE_PRODUCTO_ADMIN_SELECCIONADO] = res.codigo_producto
+        return res
+    except ErrorAdministracionInventario as exc_admin:
+        destino[CLAVE_MENSAJE_OPERACION_ADMIN] = {
+            "tipo": "error",
+            "codigo": exc_admin.codigo.value,
+            "mensaje": exc_admin.mensaje,
+        }
+        return ResultadoOperacionProductoAdmin(
+            exito=False,
+            estado=exc_admin.estado,
+            mensaje_usuario=exc_admin.mensaje,
+            codigo_error=exc_admin.codigo,
+            confirmado_en_github=False,
+            es_cambio_local_temporal=True,
+        )
+    except ErrorAutorizacionAdmin as exc_auth:
+        destino[CLAVE_MENSAJE_AUTH_ADMIN] = {
+            "tipo": "error",
+            "codigo": exc_auth.codigo.value,
+            "mensaje": exc_auth.mensaje,
+        }
+        return ResultadoOperacionProductoAdmin(
+            exito=False,
+            estado=EstadoInventarioAdmin.SESION_ADMINISTRATIVA_EXPIRADA
+            if exc_auth.codigo == CodigoResultadoAutenticacion.SESION_EXPIRADA
+            else EstadoInventarioAdmin.ERROR_VALIDACION_ADMINISTRATIVA,
+            mensaje_usuario=exc_auth.mensaje,
+            codigo_error=CodigoErrorAdministrativo.SESION_EXPIRADA
+            if exc_auth.codigo == CodigoResultadoAutenticacion.SESION_EXPIRADA
+            else CodigoErrorAdministrativo.AUTORIZACION_INVALIDA,
+            confirmado_en_github=False,
+            es_cambio_local_temporal=True,
+        )
+
+
 def ejecutar_descarte_cambios_locales_en_sesion(
     estado: MutableMapping[str, Any] | None = None,
     *,
@@ -2149,12 +2333,18 @@ def _renderizar_vista_consulta_admin(
         estado_reg_seguro = escapar_texto_presentacion_segura(
             prod.get("estado_registro_texto", "")
         )
+        es_activo_prod = bool(prod.get("es_activo", True))
+        etiqueta_estado_prod = (
+            "🟢 Activo (visible en búsqueda pública)"
+            if es_activo_prod
+            else "🔴 Inactivo (excluido de búsqueda pública)"
+        )
 
         with st.container(border=True):
-            col_info, col_ubic, col_acc = st.columns([2.2, 2.0, 1.0])
+            col_info, col_ubic, col_acc = st.columns([2.2, 2.0, 1.2])
             with col_info:
                 st.markdown(f"**{nom_seguro}**")
-                st.markdown(f"`Código: {cod_seguro}`")
+                st.markdown(f"`Código: {cod_seguro}` · **{etiqueta_estado_prod}**")
                 st.caption(f"Categoría: {cat_id_seguro} — {cat_nom_seguro}")
                 st.caption(f"Descripción: {desc_segura}")
                 st.caption(f"Estado del registro: {estado_reg_seguro}")
@@ -2190,6 +2380,38 @@ def _renderizar_vista_consulta_admin(
                         codigo_producto_editar=cod_raw,
                     )
                     st.rerun()
+                confirmar_estado_lista = st.checkbox(
+                    "Confirmar cambio de estado",
+                    key=f"chk_admin_estado_prod_{cod_raw}",
+                )
+                if es_activo_prod:
+                    if st.button(
+                        "🔴 Desactivar",
+                        key=f"btn_admin_desactivar_prod_{cod_raw}",
+                        disabled=not confirmar_estado_lista,
+                        use_container_width=True,
+                    ):
+                        ejecutar_desactivacion_producto_en_sesion(
+                            codigo_producto=cod_raw,
+                            confirmado=confirmar_estado_lista,
+                            estado=st.session_state,
+                            contexto_dispositivo=contexto_dispositivo,
+                        )
+                        st.rerun()
+                else:
+                    if st.button(
+                        "🟢 Reactivar",
+                        key=f"btn_admin_reactivar_prod_{cod_raw}",
+                        disabled=not confirmar_estado_lista,
+                        use_container_width=True,
+                    ):
+                        ejecutar_reactivacion_producto_en_sesion(
+                            codigo_producto=cod_raw,
+                            confirmado=confirmar_estado_lista,
+                            estado=st.session_state,
+                            contexto_dispositivo=contexto_dispositivo,
+                        )
+                        st.rerun()
 
 
 def _renderizar_formulario_crear_producto_admin(
@@ -2361,11 +2583,15 @@ def _renderizar_formulario_editar_producto_admin(
         label="Selecciona el producto a editar",
         options=codigos_disponibles,
         index=indice_sel,
-        format_func=lambda c: f"{c} — {mapa_productos[c]['nombre']}",
+        format_func=lambda c: (
+            f"{c} — {mapa_productos[c]['nombre']} "
+            f"[{'Activo' if mapa_productos[c].get('es_activo', True) else 'Inactivo'}]"
+        ),
         key="campo_admin_editar_selector_codigo",
     )
     st.session_state[CLAVE_PRODUCTO_ADMIN_SELECCIONADO] = codigo_elegido
     prod_actual = mapa_productos[codigo_elegido]
+    es_activo_actual = bool(prod_actual.get("es_activo", True))
 
     opciones_cat = [c["categoria_id"] for c in categorias]
     etiquetas_cat = {c["categoria_id"]: c["etiqueta"] for c in categorias}
@@ -2427,9 +2653,15 @@ def _renderizar_formulario_editar_producto_admin(
         st.session_state[clave_contexto_edicion] = contexto_producto_actual
 
     with st.container(border=True):
+        etiqueta_estado_actual = (
+            "🟢 Activo (visible en búsqueda pública)"
+            if es_activo_actual
+            else "🔴 Inactivo (excluido de búsqueda pública)"
+        )
         st.markdown(
             f"**Código único del producto (inmutable — RF-015 / CA-044):** "
-            f"`{escapar_texto_presentacion_segura(codigo_elegido)}`"
+            f"`{escapar_texto_presentacion_segura(codigo_elegido)}` · "
+            f"**Estado actual:** {etiqueta_estado_actual}"
         )
         nombre_editado = st.text_input(
             label="Nombre del producto (obligatorio)",
@@ -2524,6 +2756,43 @@ def _renderizar_formulario_editar_producto_admin(
                         contexto_dispositivo=contexto_dispositivo,
                     )
                     st.rerun()
+
+        st.divider()
+        st.markdown("**Estado de visibilidad pública del producto (RF-F-008 / CA-F-007):**")
+        st.caption(
+            "Los productos inactivos conservan intactos sus datos y ubicaciones asignadas, "
+            "pero quedan excluidos del buscador y del detalle público."
+        )
+        confirmar_cambio_ed = st.checkbox(
+            "Confirmo el cambio de estado de este producto",
+            key=f"chk_admin_editar_estado_{codigo_elegido}",
+        )
+        if es_activo_actual:
+            if st.button(
+                "🔴 Desactivar producto",
+                key=f"btn_admin_editar_desactivar_{codigo_elegido}",
+                disabled=not confirmar_cambio_ed,
+            ):
+                ejecutar_desactivacion_producto_en_sesion(
+                    codigo_producto=codigo_elegido,
+                    confirmado=confirmar_cambio_ed,
+                    estado=st.session_state,
+                    contexto_dispositivo=contexto_dispositivo,
+                )
+                st.rerun()
+        else:
+            if st.button(
+                "🟢 Reactivar producto",
+                key=f"btn_admin_editar_reactivar_{codigo_elegido}",
+                disabled=not confirmar_cambio_ed,
+            ):
+                ejecutar_reactivacion_producto_en_sesion(
+                    codigo_producto=codigo_elegido,
+                    confirmado=confirmar_cambio_ed,
+                    estado=st.session_state,
+                    contexto_dispositivo=contexto_dispositivo,
+                )
+                st.rerun()
 
 
 def _renderizar_vista_categorias_admin(
