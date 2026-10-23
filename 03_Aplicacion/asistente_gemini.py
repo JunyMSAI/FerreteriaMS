@@ -494,7 +494,9 @@ def obtener_clave_api_gemini(
                 if nombre_clave in secretos_efectivos:
                     valor = secretos_efectivos[nombre_clave]
                     if isinstance(valor, str) and valor.strip():
-                        return valor.strip()
+                        limpio = valor.strip().strip('"').strip("'").strip()
+                        if limpio:
+                            return limpio
             except Exception:
                 pass
         try:
@@ -504,7 +506,9 @@ def obtener_clave_api_gemini(
                     for subclave in ("api_key", "GEMINI_API_KEY", "GOOGLE_API_KEY"):
                         valor_sub = seccion_gemini.get(subclave)
                         if isinstance(valor_sub, str) and valor_sub.strip():
-                            return valor_sub.strip()
+                            limpio_sub = valor_sub.strip().strip('"').strip("'").strip()
+                            if limpio_sub:
+                                return limpio_sub
         except Exception:
             pass
 
@@ -514,7 +518,9 @@ def obtener_clave_api_gemini(
     for nombre_var in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
         valor_env = entorno_efectivo.get(nombre_var)
         if isinstance(valor_env, str) and valor_env.strip():
-            return valor_env.strip()
+            limpio_env = valor_env.strip().strip('"').strip("'").strip()
+            if limpio_env:
+                return limpio_env
 
     return None
 
@@ -865,6 +871,16 @@ _TERMINOS_FERRETERIA_Y_PROYECTOS: frozenset[str] = frozenset(
         "posicion",
         "codigo",
         "estante",
+        "estanteria",
+        "repisa",
+        "repisas",
+        "mensula",
+        "soporte",
+        "colocar",
+        "colgar",
+        "fijar",
+        "perforar",
+        "anclar",
         # Inglés
         "hardware",
         "tool",
@@ -873,6 +889,10 @@ _TERMINOS_FERRETERIA_Y_PROYECTOS: frozenset[str] = frozenset(
         "construction",
         "install",
         "installation",
+        "mount",
+        "hang",
+        "bracket",
+        "shelves",
         "repair",
         "fix",
         "fixing",
@@ -1787,11 +1807,20 @@ def invocar_modelo_gemini_sdk(
             api_key=clave_limpia,
             http_options=types.HttpOptions(timeout=timeout_ms),
         )
-        config_generacion = types.GenerateContentConfig(
-            system_instruction=solicitud.instruccion_sistema,
-            temperature=solicitud.temperatura,
-            max_output_tokens=solicitud.max_tokens_salida,
-        )
+        kwargs_config: dict[str, Any] = {
+            "system_instruction": solicitud.instruccion_sistema,
+            "temperature": solicitud.temperatura,
+            "max_output_tokens": solicitud.max_tokens_salida,
+        }
+        modelo_norm = (solicitud.modelo or "").strip().lower()
+        if modelo_norm.startswith("gemini-2.5-flash") and hasattr(
+            types, "ThinkingConfig"
+        ):
+            # En gemini-2.5-flash el presupuesto de razonamiento interno consume max_output_tokens;
+            # desactivarlo (thinking_budget=0) garantiza respuestas completas, rápidas y de menor consumo TPM.
+            kwargs_config["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+
+        config_generacion = types.GenerateContentConfig(**kwargs_config)
         respuesta = cliente.models.generate_content(
             model=solicitud.modelo,
             contents=list(solicitud.contenidos),
@@ -1803,6 +1832,19 @@ def invocar_modelo_gemini_sdk(
         ) from exc_api
 
     texto_generado = getattr(respuesta, "text", None)
+    if not isinstance(texto_generado, str) or not texto_generado.strip():
+        partes_texto: list[str] = []
+        for cand in getattr(respuesta, "candidates", None) or ():
+            contenido_cand = getattr(cand, "content", None)
+            for parte in getattr(contenido_cand, "parts", None) or ():
+                if getattr(parte, "thought", False):
+                    continue
+                txt_parte = getattr(parte, "text", None)
+                if isinstance(txt_parte, str) and txt_parte.strip():
+                    partes_texto.append(txt_parte.strip())
+        if partes_texto:
+            texto_generado = "\n".join(partes_texto)
+
     if not isinstance(texto_generado, str) or not texto_generado.strip():
         raise ErrorAsistenteGemini(
             MENSAJE_RESPUESTA_INVALIDA_GEMINI,
