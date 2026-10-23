@@ -60,10 +60,13 @@ AVISO_PERMANENTE_IA_GEMINI: str = (
     "Para trabajos que impliquen riesgos, consulta a un profesional cualificado."
 )
 
-MODELO_GEMINI_DEFECTO: str = "gemini-2.5-flash"
+MODELO_GEMINI_DEFECTO: str = "gemini-3.5-flash-lite"
 MODELOS_CAPA_GRATUITA_COMPATIBLES: tuple[str, ...] = (
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-3.8-flash",
+    "gemini-3.6-flash",
     "gemini-2.5-flash",
-    "gemini-2.0-flash",
     "gemini-2.5-flash-lite",
 )
 
@@ -1986,17 +1989,20 @@ def invocar_modelo_gemini_sdk(
             api_key=clave_limpia,
             http_options=types.HttpOptions(timeout=timeout_ms),
         )
+        modelo_norm = (solicitud.modelo or "").strip().lower()
         kwargs_config: dict[str, Any] = {
             "system_instruction": solicitud.instruccion_sistema,
-            "temperature": solicitud.temperatura,
             "max_output_tokens": solicitud.max_tokens_salida,
         }
-        modelo_norm = (solicitud.modelo or "").strip().lower()
+        # En Gemini 3.5 Flash-Lite / 3.6 Flash y posteriores, los parámetros de muestreo
+        # (temperature, top_p, top_k) están deprecados por Google y deben omitirse en la solicitud;
+        # además, el nivel de razonamiento por defecto en gemini-3.5-flash-lite ya es 'minimal'
+        # (reemplazando a thinking_budget de Gemini 2.5).
+        if not modelo_norm.startswith(("gemini-3.", "gemini-3-", "gemini-4")):
+            kwargs_config["temperature"] = solicitud.temperatura
         if modelo_norm.startswith("gemini-2.5-flash") and hasattr(
             types, "ThinkingConfig"
         ):
-            # En gemini-2.5-flash el presupuesto de razonamiento interno consume max_output_tokens;
-            # desactivarlo (thinking_budget=0) garantiza respuestas completas, rápidas y de menor consumo TPM.
             kwargs_config["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
 
         config_generacion = types.GenerateContentConfig(**kwargs_config)

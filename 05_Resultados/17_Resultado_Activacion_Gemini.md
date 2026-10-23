@@ -61,15 +61,15 @@ El propósito de `FERMS-FINAL-P17` es verificar y dejar lista la preparación t�
 
 ## 3. Modelo seleccionado y verificación de condiciones gratuitas (`CA-F-019`)
 
-Se verificó en la documentación oficial de **Google AI for Developers / Google AI Studio (Gemini Developer API)** la disponibilidad y condiciones vigentes del modelo configurado:
+Tras el diagnóstico real en Streamlit Community Cloud que confirmó `MODELO_NO_DISPONIBLE — HTTP_404_NOT_FOUND` para `gemini-2.5-flash` (debido a la restricción oficial de Google sobre la familia Gemini 2.5 para proyectos nuevos), se consultó la documentación oficial vigente de **Google AI for Developers (`ai.google.dev/gemini-api/docs/models`, `pricing` y `whats-new-gemini-3.6`)** y se actualizó el modelo por defecto a **`gemini-3.5-flash-lite`**:
 
 | Parámetro verificado | Detalle confirmado en documentación oficial |
 |---|---|
-| **Modelo principal recomendado** | `gemini-2.5-flash` (configurado en `MODELO_GEMINI_DEFECTO`) |
-| **Modelos gratuitos alternativos compatibles** | `gemini-2.5-flash-lite`, `gemini-2.0-flash` |
+| **Modelo principal seleccionado** | `gemini-3.5-flash-lite` (configurado en `MODELO_GEMINI_DEFECTO`) |
+| **Justificación en documentación oficial** | Google indica explícitamente en `ai.google.dev/gemini-api/docs/models`: *"we are limiting access to the 2.5 models to users who have actively used them in the past... For any new projects, use our latest models: 3.5 Flash-Lite or 3.8 Flash"*. `gemini-3.5-flash-lite` es el modelo estable más sencillo, rápido y económico recomendado como reemplazo directo de `gemini-2.5-flash`, compatible con `generateContent` y con nivel de razonamiento por defecto `minimal`. |
+| **Modelos gratuitos alternativos compatibles** | `gemini-3.1-flash-lite`, `gemini-3.8-flash`, `gemini-3.6-flash`, `gemini-2.5-flash`, `gemini-2.5-flash-lite` |
 | **Nivel de servicio** | **Free Tier (Nivel gratuito)** de Google AI Studio (proyecto sin cuenta de facturación vinculada) |
-| **Costo monetario** | **$0.00 USD** para entrada y salida dentro del nivel gratuito |
-| **Cuotas de referencia del nivel gratuito (`gemini-2.5-flash`)** | ~**10 RPM** (solicitudes por minuto), **250,000 TPM** (tokens por minuto) y ~**500 RPD** (solicitudes por día), sujetas a políticas vigentes de Google AI Studio |
+| **Costo monetario** | **$0.00 USD** (`Free of charge` para entrada y salida dentro del nivel gratuito de Google AI Studio) |
 | **Comportamiento al alcanzar la cuota gratuita** | La API rechaza la solicitud con HTTP `429 RESOURCE_EXHAUSTED` sin generar cargos ni activar planes de pago automáticamente |
 | **Privacidad de datos en nivel gratuito** | En el nivel gratuito de Google AI Studio no deben enviarse datos personales ni secretos; FerreteríaMS envía únicamente la consulta técnica de ferretería, el historial temporal acotado de la sesión y los datos públicos de productos activos relevantes del catálogo |
 
@@ -92,16 +92,14 @@ Se revisaron exclusivamente los tres componentes autorizados en la Sección 5 de
 
 ## 5. Ajustes indispensables realizados (`03_Aplicacion/asistente_gemini.py`)
 
-Sin modificar `03_Aplicacion/app.py`, `requirements.txt`, `inventario.xlsx` ni los módulos de v0/P14/P15, se aplicaron tres ajustes mínimos e indispensables en `03_Aplicacion/asistente_gemini.py` para evitar bloqueos durante la conexión real con `gemini-2.5-flash`:
+Sin modificar `03_Aplicacion/app.py`, `requirements.txt`, `inventario.xlsx` ni los módulos de v0/P14/P15, se actualizaron en `03_Aplicacion/asistente_gemini.py` la selección del modelo y la compatibilidad de parámetros de generación:
 
-1. **Desactivación del consumo de tokens de razonamiento interno (`thinking_budget=0`) en `gemini-2.5-flash` (`invocar_modelo_gemini_sdk`):**
-   - En el modelo `gemini-2.5-flash`, el modo *thinking* está activo por defecto y sus tokens de pensamiento interno se descuentan de `max_output_tokens` (`700`). Sin configurar `ThinkingConfig(thinking_budget=0)`, una consulta técnica detallada (como la instalación de una repisa) puede consumir los 700 tokens en razonamiento oculto y devolver una respuesta truncada o vacía (`respuesta.text = None`).
-   - Se añadió `thinking_config=types.ThinkingConfig(thinking_budget=0)` para modelos `gemini-2.5-flash*`, asegurando que los `700` tokens de salida se destinen íntegramente a la respuesta visible al cliente, reduciendo además la latencia y el consumo de TPM de la cuota gratuita.
-2. **Respaldo de extracción de texto desde `candidates` (`invocar_modelo_gemini_sdk`):**
-   - Si `respuesta.text` no está poblado directamente pero `respuesta.candidates[0].content.parts` contiene partes de texto visibles (no marcadas como `thought=True`), se extraen de forma segura antes de clasificar la respuesta como inválida.
-3. **Normalización de comillas en `obtener_clave_api_gemini` y términos de alcance para la prueba real (`_TERMINOS_FERRETERIA_Y_PROYECTOS`):**
-   - Se limpian comillas envolventes accidentales (`"` o `'`) al leer `GEMINI_API_KEY` desde Secrets o variables de entorno.
-   - Se incorporaron los términos `"repisa"`, `"repisas"`, `"estanteria"`, `"mensula"`, `"soporte"`, `"colocar"`, `"colgar"`, `"fijar"`, `"perforar"`, `"anclar"` (y equivalentes en inglés `"shelves"`, `"bracket"`, `"mount"`, `"hang"`) en `_TERMINOS_FERRETERIA_Y_PROYECTOS` para garantizar que cualquier formulación de la consulta real #1 de P17 (*instalación/colocación de una repisa*) sea reconocida dentro del alcance temático.
+1. **Actualización del modelo por defecto a `gemini-3.5-flash-lite` (`MODELO_GEMINI_DEFECTO` y `MODELOS_CAPA_GRATUITA_COMPATIBLES`):**
+   - Ante la restricción de acceso de Google sobre modelos `gemini-2.5-*` para proyectos nuevos (`HTTP_404_NOT_FOUND`), se seleccionó `gemini-3.5-flash-lite`, recomendado oficialmente por Google para proyectos nuevos y disponible sin costo (`Free of charge`) en el nivel gratuito de Google AI Studio.
+2. **Alineación de parámetros de `GenerateContentConfig` en `invocar_modelo_gemini_sdk`:**
+   - Conforme a la guía oficial *What's new in Gemini 3.6 Flash and 3.5 Flash-Lite* (`ai.google.dev/gemini-api/docs/whats-new-gemini-3.6`), los parámetros de muestreo (`temperature`, `top_p`, `top_k`) están deprecados en modelos `gemini-3.5-flash-lite` / `gemini-3.6-flash` y posteriores (y su nivel de razonamiento por defecto ya es `minimal`, reemplazando a `thinking_budget` de Gemini 2.5). Por ello, `invocar_modelo_gemini_sdk` omite `temperature` y `thinking_budget` cuando el modelo pertenece a la familia `gemini-3.*` / `gemini-3-*`, enviando únicamente `system_instruction` y `max_output_tokens`.
+3. **Respaldo de extracción de texto y normalización segura de clave/alcance:**
+   - Extracción de respaldo desde `candidates[0].content.parts` (ignorando partes `thought=True`), limpieza de comillas envolventes en `obtener_clave_api_gemini` y soporte de términos como `"repisa"` en `_TERMINOS_FERRETERIA_Y_PROYECTOS`.
 
 ---
 
@@ -134,14 +132,10 @@ GEMINI_API_KEY = "PEGA_AQUI_TU_CLAVE_DE_GOOGLE_AI_STUDIO"
 
 Conforme a la instrucción 4 (*no repetir las pruebas simuladas de P16*) y las restricciones de P17 (*no realizar llamadas reales a Gemini API*), se ejecutaron únicamente dos comprobaciones técnicas focalizadas en local:
 
-1. **Comprobación de compatibilidad del SDK `google-genai` (`v2.33.0`):**
-   - Verificación de importación de `from google import genai; from google.genai import types`, inicialización de `genai.Client` con `types.HttpOptions(timeout=20000)` y construcción de `types.GenerateContentConfig` con `types.ThinkingConfig(thinking_budget=0)`.
-   - **Resultado:** `OK` (código de salida `0`).
-2. **Comprobación unitaria focalizada de los ajustes de P17 en `03_Aplicacion/asistente_gemini.py`:**
-   - Saneamiento de comillas envolventes en `obtener_clave_api_gemini` para `GEMINI_API_KEY`.
-   - Validación de alcance temático para la consulta de P17 (`"Orientación para instalar una repisa, incluyendo herramientas y precauciones"` y `"¿Cómo colocar una repisa?"`).
-   - Verificación con mock de `google.genai.Client` de que `invocar_modelo_gemini_sdk` inyecta `thinking_budget=0` para `gemini-2.5-flash` y extrae partes visibles ignorando partes `thought=True`.
-   - **Resultado:** `Verificacion focalizada P17 OK` (código de salida `0`).
+1. **Prueba focalizada de construcción de solicitudes para `gemini-3.5-flash-lite` (sin clave real ni llamadas de red):**
+   - Verificación de `MODELO_GEMINI_DEFECTO == "gemini-3.5-flash-lite"`, `CONFIGURACION_LIMITES_DEFECTO.modelo == "gemini-3.5-flash-lite"` y `verificar_condiciones_capa_gratuita()`.
+   - Ejecución de `procesar_consulta_gemini_en_sesion` e invocación de `invocar_modelo_gemini_sdk` con mock de `google.genai.Client`, comprobando que la solicitud enviada a `client.models.generate_content` utiliza `model="gemini-3.5-flash-lite"` y construye `GenerateContentConfig` únicamente con `['max_output_tokens', 'system_instruction']` (omitiendo parámetros deprecados `temperature` y `thinking_budget`).
+   - **Resultado:** `PRUEBA_CONSTRUCCION_SOLICITUD_OK: gemini-3.5-flash-lite ['max_output_tokens', 'system_instruction']` (código de salida `0`).
 
 ### 7.2. Pruebas reales controladas en Streamlit Community Cloud (Pendientes de ejecución por el responsable)
 
@@ -188,7 +182,7 @@ Una vez que el responsable autorice el `commit`/`push` de este ajuste y configur
 
 ```text
  M 03_Aplicacion/asistente_gemini.py
-?? 05_Resultados/17_Resultado_Activacion_Gemini.md
+ M 05_Resultados/17_Resultado_Activacion_Gemini.md
 ```
 
 ---
