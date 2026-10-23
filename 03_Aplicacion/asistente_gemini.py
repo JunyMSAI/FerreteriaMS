@@ -131,6 +131,14 @@ MENSAJE_SERVICIO_NO_DISPONIBLE_GEMINI: str = (
     "El servicio Gemini no se encuentra disponible temporalmente. "
     "Por favor, reintenta en unos momentos. El buscador de productos continúa funcionando."
 )
+MENSAJE_MODELO_NO_DISPONIBLE_GEMINI: str = (
+    "El modelo configurado de Gemini no se encuentra disponible o no está habilitado para esta cuenta. "
+    "El buscador público de productos continúa funcionando."
+)
+MENSAJE_ERROR_SDK_GEMINI: str = (
+    "No fue posible procesar la solicitud con el cliente de Gemini en el servidor. "
+    "El buscador público de productos continúa funcionando."
+)
 MENSAJE_ERROR_CONEXION_GEMINI: str = (
     "No fue posible conectar con el servicio Gemini debido a un problema de red o comunicación. "
     "Puedes reintentar manualmente tu consulta."
@@ -173,13 +181,15 @@ NOTA_PRECAUCION_TECNICA_EN: str = (
     "professional whenever safety risks exist."
 )
 
-# Patrones para saneamiento estricto de claves de API de Google/Gemini y secretos
+# Patrones para saneamiento estricto de claves de API de Google/Gemini, encabezados y secretos
 _PATRONES_SECRETOS_GEMINI: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bAIza[0-9A-Za-z\-_]{12,}\b"),
     re.compile(r"(?i)(gemini_api_key\s*[:=]\s*)[^\s,;\"']+"),
     re.compile(r"(?i)(google_api_key\s*[:=]\s*)[^\s,;\"']+"),
     re.compile(r"(?i)(api[_-]?key\s*[:=]\s*)[^\s,;\"']+"),
     re.compile(r"(?i)(x-goog-api-key\s*[:=]\s*)[^\s,;\"']+"),
+    re.compile(r"(?i)(authorization\s*[:=]\s*(?:bearer\s+|basic\s+|token\s+)?)[^\s,;\"']+"),
+    re.compile(r"(?i)(bearer\s+)[A-Za-z0-9\-._~+/]+=*"),
 )
 
 ProveedorReloj = Callable[[], float]
@@ -200,11 +210,43 @@ class CodigoErrorGemini(str, Enum):
     LIMITE_USO_SESION_ALCANZADO = "LIMITE_USO_SESION_ALCANZADO"
     CLAVE_API_AUSENTE = "CLAVE_API_AUSENTE"
     CLAVE_API_INVALIDA = "CLAVE_API_INVALIDA"
+    MODELO_NO_DISPONIBLE = "MODELO_NO_DISPONIBLE"
     CUOTA_AGOTADA = "CUOTA_AGOTADA"
     TIEMPO_ESPERA_AGOTADO = "TIEMPO_ESPERA_AGOTADO"
     SERVICIO_NO_DISPONIBLE = "SERVICIO_NO_DISPONIBLE"
     ERROR_CONEXION = "ERROR_CONEXION"
     RESPUESTA_INVALIDA = "RESPUESTA_INVALIDA"
+    ERROR_SDK_GEMINI = "ERROR_SDK_GEMINI"
+
+
+CATEGORIAS_TECNICAS_ERROR_GEMINI: dict[str, str] = {
+    CodigoErrorGemini.PREGUNTA_VACIA.value: "Validación de entrada (consulta vacía)",
+    CodigoErrorGemini.PREGUNTA_DEMASIADO_LARGA.value: "Validación de entrada (longitud máxima)",
+    CodigoErrorGemini.LIMITE_USO_SESION_ALCANZADO.value: "Límite de consultas por sesión",
+    CodigoErrorGemini.CLAVE_API_AUSENTE.value: "Clave de API ausente",
+    CodigoErrorGemini.CLAVE_API_INVALIDA.value: "Clave inválida o sin permisos",
+    CodigoErrorGemini.MODELO_NO_DISPONIBLE.value: "Modelo no disponible",
+    CodigoErrorGemini.CUOTA_AGOTADA.value: "Cuota agotada",
+    CodigoErrorGemini.TIEMPO_ESPERA_AGOTADO.value: "Timeout (tiempo de espera agotado)",
+    CodigoErrorGemini.SERVICIO_NO_DISPONIBLE.value: "Servicio Gemini no disponible (5xx)",
+    CodigoErrorGemini.ERROR_CONEXION.value: "Error de red o conexión",
+    CodigoErrorGemini.RESPUESTA_INVALIDA.value: "Respuesta vacía o bloqueada del modelo",
+    CodigoErrorGemini.ERROR_SDK_GEMINI.value: "Error del SDK o solicitud rechazada",
+}
+
+
+def obtener_categoria_tecnica_error_gemini(
+    codigo: CodigoErrorGemini | str | None,
+) -> str:
+    """Devuelve la categoría técnica segura asociada a un código de error de Gemini."""
+    if codigo is None:
+        return "Error no clasificado"
+    clave = (
+        codigo.value
+        if isinstance(codigo, CodigoErrorGemini)
+        else str(codigo).strip()
+    )
+    return CATEGORIAS_TECNICAS_ERROR_GEMINI.get(clave, "Error del servicio Gemini")
 
 
 class EstadoRespuestaGemini(str, Enum):
@@ -392,6 +434,8 @@ class ErrorAsistenteGemini(Exception):
         detalle_tecnico: str = "",
         es_reintentable: bool = False,
         api_key_para_sanitizar: str | None = None,
+        categoria_tecnica: str = "",
+        subcategoria_tecnica: str = "",
     ) -> None:
         mensaje_seguro = ocultar_secretos_gemini(
             mensaje_usuario, api_key=api_key_para_sanitizar
@@ -399,11 +443,23 @@ class ErrorAsistenteGemini(Exception):
         detalle_seguro = ocultar_secretos_gemini(
             detalle_tecnico, api_key=api_key_para_sanitizar
         )
+        cat_segura = (
+            ocultar_secretos_gemini(
+                categoria_tecnica, api_key=api_key_para_sanitizar
+            ).strip()
+            if categoria_tecnica
+            else obtener_categoria_tecnica_error_gemini(codigo)
+        )
+        subcat_segura = ocultar_secretos_gemini(
+            subcategoria_tecnica, api_key=api_key_para_sanitizar
+        ).strip()
         super().__init__(mensaje_seguro)
         self.mensaje_usuario: str = mensaje_seguro
         self.codigo: CodigoErrorGemini = codigo
         self.detalle_tecnico: str = detalle_seguro
         self.es_reintentable: bool = es_reintentable
+        self.categoria_tecnica: str = cat_segura
+        self.subcategoria_tecnica: str = subcat_segura
 
 
 @dataclass(frozen=True)
@@ -1668,6 +1724,24 @@ def asegurar_precaucion_en_respuesta(
 # ==============================================================================
 
 
+def _extraer_codigo_http_excepcion(exc: Exception, texto_bajo: str) -> int | None:
+    """Extrae de forma segura el código de estado HTTP numérico si está presente en la excepción."""
+    for attr in ("code", "status_code", "http_status"):
+        valor = getattr(exc, attr, None)
+        if isinstance(valor, int) and 100 <= valor <= 599:
+            return valor
+        if isinstance(valor, str) and valor.strip().isdigit():
+            num = int(valor.strip())
+            if 100 <= num <= 599:
+                return num
+    coincidencia = re.search(
+        r"\b(400|401|403|404|408|409|422|429|500|502|503|504)\b", texto_bajo
+    )
+    if coincidencia:
+        return int(coincidencia.group(1))
+    return None
+
+
 def clasificar_excepcion_gemini(
     exc: Exception,
     *,
@@ -1677,33 +1751,46 @@ def clasificar_excepcion_gemini(
     if isinstance(exc, ErrorAsistenteGemini):
         return exc
 
-    texto_exc = ocultar_secretos_gemini(str(exc), api_key=api_key)
+    partes_inspeccion = (
+        str(exc),
+        str(getattr(exc, "status", "") or ""),
+        str(getattr(exc, "message", "") or ""),
+        str(getattr(exc, "details", "") or ""),
+    )
+    texto_exc = ocultar_secretos_gemini(
+        " ".join(p for p in partes_inspeccion if p), api_key=api_key
+    )
     texto_bajo = texto_exc.casefold()
     nombre_clase = type(exc).__name__.casefold()
+    codigo_http = _extraer_codigo_http_excepcion(exc, texto_bajo)
 
     # 1. Tiempo de espera agotado (timeout)
     if (
         isinstance(exc, TimeoutError)
+        or "timeout" in nombre_clase
+        or codigo_http in (408, 504)
         or "timeout" in texto_bajo
         or "timed out" in texto_bajo
         or "deadline_exceeded" in texto_bajo
         or "deadline exceeded" in texto_bajo
-        or "504" in texto_bajo
     ):
+        subcat_timeout = "HTTP_504_DEADLINE_EXCEEDED" if codigo_http == 504 else "TIMEOUT_EXCEEDED"
         return ErrorAsistenteGemini(
             MENSAJE_TIEMPO_ESPERA_GEMINI,
             codigo=CodigoErrorGemini.TIEMPO_ESPERA_AGOTADO,
             detalle_tecnico=texto_exc,
             es_reintentable=True,
             api_key_para_sanitizar=api_key,
+            subcategoria_tecnica=subcat_timeout,
         )
 
     # 2. Cuota gratuita o límite de tasa agotado (HTTP 429 / RESOURCE_EXHAUSTED)
     if (
-        "429" in texto_bajo
+        codigo_http == 429
         or "resource_exhausted" in texto_bajo
         or "quota" in texto_bajo
         or "rate limit" in texto_bajo
+        or "rate_limit" in texto_bajo
         or "too many requests" in texto_bajo
     ):
         return ErrorAsistenteGemini(
@@ -1712,49 +1799,121 @@ def clasificar_excepcion_gemini(
             detalle_tecnico=texto_exc,
             es_reintentable=True,
             api_key_para_sanitizar=api_key,
+            subcategoria_tecnica="HTTP_429_RESOURCE_EXHAUSTED",
         )
 
     # 3. Clave API inválida o permiso denegado (HTTP 401 / 403 / API_KEY_INVALID)
     if (
-        "api_key_invalid" in texto_bajo
+        codigo_http in (401, 403)
+        or "api_key_invalid" in texto_bajo
         or "invalid api key" in texto_bajo
+        or "api key not valid" in texto_bajo
+        or "api key expired" in texto_bajo
+        or "api_key_not_found" in texto_bajo
+        or "api_key_service_blocked" in texto_bajo
         or "unauthenticated" in texto_bajo
         or "permission_denied" in texto_bajo
-        or "401" in texto_bajo
-        or "403" in texto_bajo
+        or "permission denied" in texto_bajo
+        or "consumer_invalid" in texto_bajo
     ):
+        if "permission_denied" in texto_bajo or codigo_http == 403:
+            subcat_auth = "HTTP_403_PERMISSION_DENIED"
+        elif "unauthenticated" in texto_bajo or codigo_http == 401:
+            subcat_auth = "HTTP_401_UNAUTHENTICATED"
+        else:
+            subcat_auth = "API_KEY_INVALID"
         return ErrorAsistenteGemini(
             MENSAJE_CLAVE_API_INVALIDA_GEMINI,
             codigo=CodigoErrorGemini.CLAVE_API_INVALIDA,
             detalle_tecnico=texto_exc,
             es_reintentable=False,
             api_key_para_sanitizar=api_key,
+            subcategoria_tecnica=subcat_auth,
         )
 
-    # 4. Servicio no disponible temporalmente (HTTP 500 / 502 / 503 / UNAVAILABLE)
+    # 4. Modelo no disponible o no encontrado (HTTP 404 / NOT_FOUND / modelo no soportado)
     if (
-        "503" in texto_bajo
-        or "502" in texto_bajo
-        or "500" in texto_bajo
+        codigo_http == 404
+        or "not_found" in texto_bajo
+        or "model not found" in texto_bajo
+        or "is not found" in texto_bajo
+        or "model not available" in texto_bajo
+        or "is not supported for generatecontent" in texto_bajo
+        or "unsupported model" in texto_bajo
+        or "unknown model" in texto_bajo
+        or "invalid model" in texto_bajo
+        or (
+            "model" in texto_bajo
+            and any(
+                marcador in texto_bajo
+                for marcador in (
+                    "not found",
+                    "not available",
+                    "not supported",
+                    "does not exist",
+                    "deprecated",
+                    "decommissioned",
+                )
+            )
+        )
+    ):
+        subcat_modelo = (
+            "HTTP_404_NOT_FOUND"
+            if codigo_http == 404 or "not_found" in texto_bajo or "not found" in texto_bajo
+            else "MODEL_UNSUPPORTED_OR_UNAVAILABLE"
+        )
+        return ErrorAsistenteGemini(
+            MENSAJE_MODELO_NO_DISPONIBLE_GEMINI,
+            codigo=CodigoErrorGemini.MODELO_NO_DISPONIBLE,
+            detalle_tecnico=texto_exc,
+            es_reintentable=False,
+            api_key_para_sanitizar=api_key,
+            subcategoria_tecnica=subcat_modelo,
+        )
+
+    # 5. Servicio no disponible temporalmente (HTTP 500 / 502 / 503 / UNAVAILABLE)
+    if (
+        codigo_http in (500, 502, 503)
         or "unavailable" in texto_bajo
         or "overloaded" in texto_bajo
         or "internal error" in texto_bajo
+        or "internal server error" in texto_bajo
+        or "backend error" in texto_bajo
+        or "servererror" in nombre_clase
     ):
+        subcat_srv = (
+            f"HTTP_{codigo_http}_UNAVAILABLE"
+            if codigo_http in (500, 502, 503)
+            else "SERVICE_UNAVAILABLE"
+        )
         return ErrorAsistenteGemini(
             MENSAJE_SERVICIO_NO_DISPONIBLE_GEMINI,
             codigo=CodigoErrorGemini.SERVICIO_NO_DISPONIBLE,
             detalle_tecnico=texto_exc,
             es_reintentable=True,
             api_key_para_sanitizar=api_key,
+            subcategoria_tecnica=subcat_srv,
         )
 
-    # 5. Errores de red / conexión
+    # 6. Errores de red / conexión
     if (
         isinstance(exc, (ConnectionError, OSError))
+        or any(
+            tok in nombre_clase
+            for tok in (
+                "connecterror",
+                "networkerror",
+                "transporterror",
+                "socket",
+                "sslerror",
+                "proxyerror",
+            )
+        )
         or "connection" in texto_bajo
         or "network" in texto_bajo
-        or "connecterror" in nombre_clase
-        or " DNS " in texto_exc
+        or " dns " in f" {texto_bajo} "
+        or "name or service not known" in texto_bajo
+        or "temporary failure in name resolution" in texto_bajo
     ):
         return ErrorAsistenteGemini(
             MENSAJE_ERROR_CONEXION_GEMINI,
@@ -1762,15 +1921,33 @@ def clasificar_excepcion_gemini(
             detalle_tecnico=texto_exc,
             es_reintentable=True,
             api_key_para_sanitizar=api_key,
+            subcategoria_tecnica="NETWORK_OR_CONNECTION_ERROR",
         )
 
-    # 6. Cualquier otro error de respuesta o cliente
+    # 7. Errores del SDK, validación de parámetros o precondición de solicitud (400 / ClientError / SDK)
+    if isinstance(exc, (ImportError, ModuleNotFoundError)):
+        subcat_sdk = "SDK_IMPORT_ERROR"
+    elif "failed_precondition" in texto_bajo:
+        subcat_sdk = "HTTP_400_FAILED_PRECONDITION"
+    elif "invalid_argument" in texto_bajo or codigo_http == 400:
+        subcat_sdk = "HTTP_400_INVALID_ARGUMENT"
+    elif (
+        isinstance(exc, (TypeError, ValueError, AttributeError, KeyError))
+        or "validationerror" in nombre_clase
+    ):
+        subcat_sdk = "SDK_CONFIG_VALIDATION_ERROR"
+    elif codigo_http is not None:
+        subcat_sdk = f"HTTP_{codigo_http}_CLIENT_ERROR"
+    else:
+        subcat_sdk = "SDK_CLIENT_ERROR"
+
     return ErrorAsistenteGemini(
-        MENSAJE_SERVICIO_NO_DISPONIBLE_GEMINI,
-        codigo=CodigoErrorGemini.SERVICIO_NO_DISPONIBLE,
+        MENSAJE_ERROR_SDK_GEMINI,
+        codigo=CodigoErrorGemini.ERROR_SDK_GEMINI,
         detalle_tecnico=texto_exc,
-        es_reintentable=True,
+        es_reintentable=False,
         api_key_para_sanitizar=api_key,
+        subcategoria_tecnica=subcat_sdk,
     )
 
 
@@ -1786,6 +1963,7 @@ def invocar_modelo_gemini_sdk(
             MENSAJE_CLAVE_API_AUSENTE_GEMINI,
             codigo=CodigoErrorGemini.CLAVE_API_AUSENTE,
             es_reintentable=False,
+            subcategoria_tecnica="MISSING_API_KEY",
         )
 
     clave_limpia = api_key.strip()
@@ -1794,11 +1972,12 @@ def invocar_modelo_gemini_sdk(
         from google.genai import types
     except Exception as exc_import:
         raise ErrorAsistenteGemini(
-            MENSAJE_SERVICIO_NO_DISPONIBLE_GEMINI,
-            codigo=CodigoErrorGemini.SERVICIO_NO_DISPONIBLE,
+            MENSAJE_ERROR_SDK_GEMINI,
+            codigo=CodigoErrorGemini.ERROR_SDK_GEMINI,
             detalle_tecnico=f"SDK google-genai no disponible: {exc_import}",
             es_reintentable=False,
             api_key_para_sanitizar=clave_limpia,
+            subcategoria_tecnica="SDK_IMPORT_ERROR",
         ) from exc_import
 
     try:
@@ -2107,6 +2286,10 @@ def procesar_consulta_gemini_en_sesion(
         )
         estado[CLAVE_ULTIMO_ERROR_GEMINI] = {
             "codigo": CodigoErrorGemini.PREGUNTA_VACIA.value,
+            "categoria_tecnica": obtener_categoria_tecnica_error_gemini(
+                CodigoErrorGemini.PREGUNTA_VACIA
+            ),
+            "subcategoria_tecnica": "",
             "mensaje": MENSAJE_PREGUNTA_VACIA_GEMINI,
             "reintentable": False,
         }
@@ -2132,6 +2315,10 @@ def procesar_consulta_gemini_en_sesion(
         )
         estado[CLAVE_ULTIMO_ERROR_GEMINI] = {
             "codigo": CodigoErrorGemini.PREGUNTA_DEMASIADO_LARGA.value,
+            "categoria_tecnica": obtener_categoria_tecnica_error_gemini(
+                CodigoErrorGemini.PREGUNTA_DEMASIADO_LARGA
+            ),
+            "subcategoria_tecnica": "",
             "mensaje": msg_larga,
             "reintentable": False,
         }
@@ -2160,6 +2347,10 @@ def procesar_consulta_gemini_en_sesion(
         )
         estado[CLAVE_ULTIMO_ERROR_GEMINI] = {
             "codigo": CodigoErrorGemini.LIMITE_USO_SESION_ALCANZADO.value,
+            "categoria_tecnica": obtener_categoria_tecnica_error_gemini(
+                CodigoErrorGemini.LIMITE_USO_SESION_ALCANZADO
+            ),
+            "subcategoria_tecnica": "",
             "mensaje": msg_limite,
             "reintentable": False,
         }
@@ -2307,6 +2498,8 @@ def procesar_consulta_gemini_en_sesion(
         )
         estado[CLAVE_ULTIMO_ERROR_GEMINI] = {
             "codigo": error_controlado.codigo.value,
+            "categoria_tecnica": error_controlado.categoria_tecnica,
+            "subcategoria_tecnica": error_controlado.subcategoria_tecnica,
             "mensaje": error_controlado.mensaje_usuario,
             "reintentable": error_controlado.es_reintentable,
         }

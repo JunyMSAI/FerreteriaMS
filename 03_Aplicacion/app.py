@@ -226,6 +226,7 @@ from asistente_gemini import (  # noqa: E402
     SolicitudModeloGemini,
     inicializar_estado_gemini_en_sesion,
     iniciar_nueva_conversacion_gemini,
+    obtener_categoria_tecnica_error_gemini,
     obtener_clave_api_gemini,
     obtener_estado_uso_gemini_en_sesion,
     obtener_historial_chat_gemini,
@@ -2486,7 +2487,9 @@ def _renderizar_seccion_gemini(
         error_gemini = st.session_state.get(CLAVE_ULTIMO_ERROR_GEMINI)
         if isinstance(error_gemini, Mapping):
             msg_err_seg = ocultar_secretos_gemini(str(error_gemini.get("mensaje", "")))
-            cod_err_str = str(error_gemini.get("codigo", ""))
+            cod_err_str = ocultar_secretos_gemini(
+                str(error_gemini.get("codigo", ""))
+            ).strip()
             es_reintentable = bool(error_gemini.get("reintentable", False))
             if msg_err_seg:
                 if cod_err_str in {
@@ -2497,6 +2500,22 @@ def _renderizar_seccion_gemini(
                     st.warning(msg_err_seg)
                 else:
                     st.error(msg_err_seg)
+                    if cod_err_str:
+                        cat_err_seg = ocultar_secretos_gemini(
+                            str(
+                                error_gemini.get("categoria_tecnica")
+                                or obtener_categoria_tecnica_error_gemini(cod_err_str)
+                            )
+                        ).strip()
+                        subcat_err_seg = ocultar_secretos_gemini(
+                            str(error_gemini.get("subcategoria_tecnica", "") or "")
+                        ).strip()
+                        sufijo_subcat = (
+                            f" · Detalle: `{subcat_err_seg}`" if subcat_err_seg else ""
+                        )
+                        st.caption(
+                            f"Diagnóstico técnico: `{cod_err_str}` ({cat_err_seg}){sufijo_subcat}"
+                        )
             if es_reintentable and st.session_state.get(CLAVE_ULTIMA_PREGUNTA_FALLIDA_GEMINI):
                 if st.button(
                     TEXTO_BOTON_REINTENTAR_GEMINI,
