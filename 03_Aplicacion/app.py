@@ -304,7 +304,7 @@ TITULO_SECCION_UBICACIONES_SECUNDARIAS: str = "Ubicaciones secundarias"
 # Constantes del área visual de Gemini «Próximamente» y diseño responsive (Secciones 5, 6 y 7 del Prompt 06)
 RUTA_ARCHIVO_ESTILOS_CSS: Path = _DIRECTORIO_ACTUAL / "estilos.css"
 ETIQUETA_BANNER_SUPERIOR: str = "TU FERRETERÍA · LOCALIZACIÓN DE PRODUCTOS EN TIENDA"
-TITULO_SECCION_GEMINI: str = "Asistente Gemini"
+TITULO_SECCION_GEMINI: str = "Asistente con IA"
 ESTADO_GEMINI_PROXIMAMENTE: str = "Próximamente"
 SUBTITULO_GEMINI_V0: str = "Asistencia con IA disponible en la entrega final"
 DESCRIPCION_GEMINI_V0: str = (
@@ -318,16 +318,16 @@ NOTA_ESTADO_GEMINI_V0: str = (
 
 # Constantes de navegación y sección administrativa (Prompts 07, 08, 09 y 18)
 TEXTO_BOTON_NAV_INICIO: str = "🏠 Inicio"
-TEXTO_BOTON_NAV_PRODUCTOS: str = "📦 Productos"
-TEXTO_BOTON_NAV_GEMINI: str = "✨ Asistente Gemini"
-TEXTO_BOTON_IR_GEMINI_DETALLE: str = "✨ Consultar en Asistente Gemini"
+TEXTO_BOTON_NAV_PRODUCTOS: str = "📦 Configuración de productos"
+TEXTO_BOTON_NAV_GEMINI: str = "✨ Asistente"
+TEXTO_BOTON_IR_GEMINI_DETALLE: str = "✨ Consultar en Asistente"
 TEXTO_BOTON_VOLVER_INICIO_GEMINI: str = "🔍 Ir a búsqueda de productos"
 ALTURA_CONTENEDOR_CHAT_GEMINI_PX: int = 460
 TITULO_SECCION_ADMIN_LOGIN: str = "Acceso de administración"
 SUBTITULO_SECCION_ADMIN_LOGIN: str = (
-    "Ingresa con tu usuario y contraseña para acceder al panel administrativo de Productos."
+    "Ingresa con tu usuario y contraseña para acceder al panel administrativo de Configuración de productos."
 )
-TITULO_SECCION_PRODUCTOS_ADMIN: str = "Productos — Panel administrativo"
+TITULO_SECCION_PRODUCTOS_ADMIN: str = "Configuración de productos — Panel administrativo"
 TEXTO_BOTON_LOGIN_ADMIN: str = "🔐 Iniciar sesión"
 TEXTO_BOTON_LOGOUT_ADMIN: str = "🚪 Cerrar sesión (Logout)"
 TEXTO_BOTON_VOLVER_SITIO: str = "🏠 Volver al buscador público"
