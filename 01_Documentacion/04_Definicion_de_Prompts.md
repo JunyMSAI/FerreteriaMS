@@ -3,7 +3,8 @@
 **Proyecto:** FerreteríaMS  
 **Documento:** `01_Documentacion/04_Definicion_de_Prompts.md`  
 **Cobertura:** Prompts aprobados P01–P18
-**Naturaleza:** Índice informativo de consulta rápida.
+
+## Índice informativo de consulta rápida.
 
 ## 1. Propósito del documento
 
