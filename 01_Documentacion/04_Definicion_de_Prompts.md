@@ -50,12 +50,3 @@ Prompts: Objetivo y necesidad atendida
     Preparar la conexión real con Google Gemini API, configurar la clave de manera segura y verificar compatibilidad, disponibilidad y manejo de errores.
 - **P18 — Página independiente de Gemini**  `18_Pagina_Independiente_Gemini.md`
     Separar el chat de la búsqueda pública y trasladarlo a una sección propia.
-
-## 3. Secuencia general del proyecto
-
-- **P01–P03 · Fundamentos y datos:** verificación inicial, motor Excel y lectura desde GitHub.
-- **P04–P06 · Experiencia pública:** búsqueda, ubicación de productos e interfaz adaptable.
-- **P07–P10 · Administración y persistencia:** autenticación, sesiones, edición y guardado remoto.
-- **P11–P13 · Integración, despliegue:** comprobaciones finales y publicación.
-- **P14–P15 · Ampliación administrativa:** mantenimiento de categorías, ubicaciones y estados de productos.
-- **P16–P18 · Asistente Gemini:** implementación del chat, activación real y página independiente.
