@@ -21,21 +21,21 @@ Prompts: Objetivo y necesidad atendida
 - **P03 — Lectura desde GitHub**  `03_Lectura_GitHub.md`
     Conectar la aplicación con GitHub API para consultar, descargar y validar el archivo del inventario creado en Excel, incluyendo control de versión e incidencias de acceso.
 - **P04 — Búsqueda pública**  `04_Busqueda_Publica.md`
-    Construir la búsqueda de productos por nombre con coincidencias parciales, normalización de texto, relevancia y paginación en Streamlit.
+    Construir la búsqueda de productos por nombre con coincidencias parciales, normalización de texto, relevancia y pagina en Streamlit.
 - **P05 — Detalles y ubicaciones**  `05_Detalles_Ubicaciones.md`
-    Permitir seleccionar un resultado y consultar la información del producto, su ubicación principal y otras ubicaciones asignadas. |
+    Permitir seleccionar un resultado y consultar la información del producto, su ubicación principal y otras ubicaciones asignadas.
 - **P06 — Interfaz responsive y Gemini «Próximamente»**  `06_Interfaz_Responsive_Gemini.md`
     Mejorar la presentación en computadora he incorporar un espacio visual reservado para Gemini, todavía sin conexión funcional.
 - **P07 — Autenticación administrativa**  `07_Autenticacion_Administrativa.md`
-    Establecer el acceso protegido del administrador, con credenciales seguras y separación entre funciones públicas y administrativas. | Inicio de sesión administrativo y protección básica de las funciones restringidas. |
+    Establecer el acceso protegido del administrador, con credenciales seguras y separación entre funciones públicas y administrativas. Inicio de sesión administrativo y protección básica de las funciones restringidas.
 - **P08 — Sesiones, bloqueos y borradores**  `08_Sesiones_Bloqueos_Borradores.md`
     Reforzar la seguridad administrativa mediante intentos fallidos, bloqueos progresivos, expiración, renovación de sesión y manejo de cambios pendientes.
 - **P09 — Gestión administrativa**  `09_Gestion_Administrativa_Productos_Ubicaciones.md`
-    Crear la interfaz y lógica para consultar, crear y editar productos y sus relaciones con categorías y ubicaciones, trabajando con borradores. Administración local del inventario preparada para el guardado remoto.
+    Crear la interfaz y lógica para consultar, crear y editar productos y sus relaciones con categorías y ubicaciones. 
 - **P10 — Persistencia en GitHub**  `10_Persistencia_Inventario_GitHub.md`
-    Permitir serializar y guardar de forma controlada el Excel maestro mediante GitHub API, con confirmación, manejo de credenciales y prevención de conflictos de versión.
+    Permitir guardar de forma controlada el inventario en Excel mediante GitHub API, con confirmación, manejo de credenciales.
 - **P11 — Integración y seguridad**  `11_Integracion_Seguridad.md`
-    Comprobar la integración entre módulos, atender riesgos de seguridad relevantes y preparar la entrega sin ampliar innecesariamente el alcance.
+    Comprobar la integración entre módulos, atender riesgos de seguridad relevantes y preparar la entrega.
 - **P12 — Despliegue en Streamlit Cloud**  `12_Despliegue_Streamlit_Cloud.md`
     Completar los ajustes mínimos de funcionamiento y habilitar el despliegue real, incluyendo navegación, inventario y preparación del guardado mediante GitHub.
 - **P13 — Validación final de v0**  `13_Validacion_Final.md`
@@ -49,7 +49,7 @@ Prompts: Objetivo y necesidad atendida
 - **P17 — Activación y validación de Gemini**  `17_Activacion_Validacion_Gemini.md`
     Preparar la conexión real con Google Gemini API, configurar la clave de manera segura y verificar compatibilidad, disponibilidad y manejo de errores.
 - **P18 — Página independiente de Gemini**  `18_Pagina_Independiente_Gemini.md`
-    Separar el chat de la búsqueda pública y trasladarlo a una sección propia con mayor ancho, historial desplazable y navegación que conserve el contexto de sesión.
+    Separar el chat de la búsqueda pública y trasladarlo a una sección propia.
 
 ## 3. Secuencia general del proyecto
 
