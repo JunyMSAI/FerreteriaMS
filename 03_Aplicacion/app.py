@@ -325,7 +325,7 @@ TEXTO_BOTON_VOLVER_INICIO_GEMINI: str = "🔍 Ir a búsqueda de productos"
 ALTURA_CONTENEDOR_CHAT_GEMINI_PX: int = 460
 TITULO_SECCION_ADMIN_LOGIN: str = "Acceso de administración"
 SUBTITULO_SECCION_ADMIN_LOGIN: str = (
-    "Ingresa con tu usuario y contraseña para acceder al panel administrativo de Configuración de productos."
+    "Ingresa con tu usuario y contraseña para acceder al panel administrativo de configuración de productos."
 )
 TITULO_SECCION_PRODUCTOS_ADMIN: str = "Configuración de productos — Panel administrativo"
 TEXTO_BOTON_LOGIN_ADMIN: str = "🔐 Iniciar sesión"
@@ -2347,7 +2347,7 @@ def _renderizar_banner_encabezado() -> None:
 
     seccion_actual = obtener_seccion_activa()
     with col_nav:
-        col_nav_inicio, col_nav_productos, col_nav_gemini = st.columns(
+        col_nav_inicio, col_nav_gemini, col_nav_productos = st.columns(
             [1, 1.1, 1.45], gap="small"
         )
         with col_nav_inicio:
