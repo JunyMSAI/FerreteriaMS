@@ -318,8 +318,8 @@ NOTA_ESTADO_GEMINI_V0: str = (
 
 # Constantes de navegación y sección administrativa (Prompts 07, 08, 09 y 18)
 TEXTO_BOTON_NAV_INICIO: str = "🏠 Inicio"
-TEXTO_BOTON_NAV_PRODUCTOS: str = "📦 Configuración de productos"
-TEXTO_BOTON_NAV_GEMINI: str = "✨ Asistente"
+TEXTO_BOTON_NAV_PRODUCTOS: str = "📦 Configuración"
+TEXTO_BOTON_NAV_GEMINI: str = "✨ Asistente con IA"
 TEXTO_BOTON_IR_GEMINI_DETALLE: str = "✨ Consultar en Asistente"
 TEXTO_BOTON_VOLVER_INICIO_GEMINI: str = "🔍 Ir a búsqueda de productos"
 ALTURA_CONTENEDOR_CHAT_GEMINI_PX: int = 460
