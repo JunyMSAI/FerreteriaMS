@@ -19,7 +19,7 @@ Prompts: Objetivo y necesidad atendida
 - **P02 — Motor de inventario**  `02_Motor_Inventario.md`
     Preparar dependencias y construir el motor para leer y validar el inventario Excel de cuatro hojas, con reglas de integridad y protección de datos existentes.
 - **P03 — Lectura desde GitHub**  `03_Lectura_GitHub.md`
-    Conectar la aplicación con GitHub API para consultar, descargar y validar el archivo maestro, incluyendo control de versión e incidencias de acceso.
+    Conectar la aplicación con GitHub API para consultar, descargar y validar el archivo del inventario creado en Excel, incluyendo control de versión e incidencias de acceso.
 - **P04 — Búsqueda pública**  `04_Busqueda_Publica.md`
     Construir la búsqueda de productos por nombre con coincidencias parciales, normalización de texto, relevancia y paginación en Streamlit.
 - **P05 — Detalles y ubicaciones**  `05_Detalles_Ubicaciones.md`
