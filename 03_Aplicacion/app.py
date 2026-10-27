@@ -278,7 +278,7 @@ TITULO: str = "FerreteríaMS"
 ICONO_PAGINA: str = "🛠️"
 DESCRIPCION: str = (
     "Ninguna tarea es difícil si tienes la herramienta correcta.  \n"
-    "Busca productos por su nombre para consultar su registro en el inventario de la tienda."
+    "Busca productos por su nombre en el inventario de la tienda."
 )
 TITULO_SECCION_BUSQUEDA: str = "Buscar productos"
 PLACEHOLDER_CAMPO_BUSQUEDA: str = "Escribe el nombre del producto..."
