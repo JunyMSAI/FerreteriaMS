@@ -316,10 +316,18 @@ NOTA_ESTADO_GEMINI_V0: str = (
     "el asistente conversacional ni se realizan consultas a modelos de inteligencia artificial."
 )
 
-# Constantes de navegación y sección administrativa (Prompts 07, 08, 09 y 18)
+# Constantes de navegación y sección administrativa (Prompts 07, 08, 09, 18 y 19)
 TEXTO_BOTON_NAV_INICIO: str = "🏠 Inicio"
 TEXTO_BOTON_NAV_PRODUCTOS: str = "📦 Configuración"
 TEXTO_BOTON_NAV_GEMINI: str = "✨ Asistente con IA"
+TEXTO_BOTON_NAV_ACERCA_DE: str = "ℹ️ Acerca de"
+TITULO_SECCION_ACERCA_DE: str = "Acerca de FerreteríaMS"
+LEMA_SECCION_ACERCA_DE: str = "Encuentra lo que necesitas. Aprende cómo utilizarlo."
+NOTA_INFORMATIVA_ACERCA_DE: str = (
+    "Las recomendaciones generadas por inteligencia artificial pueden contener errores y no sustituyen "
+    "las instrucciones del fabricante ni la asesoría de un profesional cualificado. La información del "
+    "catálogo no confirma cantidades disponibles en inventario."
+)
 TEXTO_BOTON_IR_GEMINI_DETALLE: str = "✨ Consultar en Asistente"
 TEXTO_BOTON_VOLVER_INICIO_GEMINI: str = "🔍 Ir a búsqueda de productos"
 ALTURA_CONTENEDOR_CHAT_GEMINI_PX: int = 460
@@ -400,12 +408,13 @@ CLAVE_SECCION_ACTIVA = "ferms_seccion_activa"
 
 
 class SeccionInterfaz(str, Enum):
-    """Secciones principales de navegación de FerreteríaMS (Inicio, Productos y Asistente Gemini)."""
+    """Secciones principales de navegación de FerreteríaMS (Inicio, Productos, Asistente Gemini y Acerca de)."""
 
     INICIO = "INICIO"
     PRODUCTOS = "PRODUCTOS"
     ASISTENTE_GEMINI = "ASISTENTE_GEMINI"
     GEMINI = "ASISTENTE_GEMINI"
+    ACERCA_DE = "ACERCA_DE"
 
 
 class EstadoOperativoInterfaz(str, Enum):
@@ -490,8 +499,17 @@ def _resolver_seccion_interfaz(valor: Any) -> SeccionInterfaz:
             SeccionInterfaz.ASISTENTE_GEMINI.value,
             "GEMINI",
             "ASISTENTE GEMINI",
+            "ASISTENTE",
+            "ASISTENTE CON IA",
         }:
             return SeccionInterfaz.ASISTENTE_GEMINI
+        if normalizado in {
+            SeccionInterfaz.ACERCA_DE.value,
+            "ACERCA DE",
+            "ACERCA DE FERRETERIAMS",
+            "ACERCA DE FERRETERÍAMS",
+        }:
+            return SeccionInterfaz.ACERCA_DE
     return SeccionInterfaz.INICIO
 
 
@@ -499,7 +517,7 @@ def seleccionar_seccion_interfaz(
     seccion: SeccionInterfaz | str,
     estado: MutableMapping[str, Any] | None = None,
 ) -> SeccionInterfaz:
-    """Cambia la sección activa entre `INICIO` (público), `PRODUCTOS` (administración) y `ASISTENTE_GEMINI`."""
+    """Cambia la sección activa entre `INICIO`, `ASISTENTE_GEMINI`, `PRODUCTOS` y `ACERCA_DE`."""
     destino = inicializar_estado_sesion(estado)
     seccion_enum = _resolver_seccion_interfaz(seccion)
     destino[CLAVE_SECCION_ACTIVA] = seccion_enum.value
@@ -2340,16 +2358,16 @@ def _aplicar_estilos_locales() -> None:
 
 
 def _renderizar_banner_encabezado() -> None:
-    """Presenta la identidad visual y la barra de navegación superior (Inicio, Productos y Asistente Gemini)."""
-    col_marca, col_nav = st.columns([1.65, 1.55], vertical_alignment="center")
+    """Presenta la identidad visual y la barra de navegación superior (Inicio, Asistente, Configuración y Acerca de)."""
+    col_marca, col_nav = st.columns([1.35, 1.85], vertical_alignment="center")
     with col_marca:
         st.title(f"{ICONO_PAGINA} {TITULO}")
         st.caption(DESCRIPCION)
 
     seccion_actual = obtener_seccion_activa()
     with col_nav:
-        col_nav_inicio, col_nav_gemini, col_nav_productos = st.columns(
-            [1, 1.1, 1.1], gap="small"
+        col_nav_inicio, col_nav_gemini, col_nav_productos, col_nav_acerca_de = st.columns(
+            [1, 1.25, 1.15, 1.05], gap="small"
         )
         with col_nav_inicio:
             if st.button(
@@ -2359,15 +2377,6 @@ def _renderizar_banner_encabezado() -> None:
                 use_container_width=True,
             ):
                 seleccionar_seccion_interfaz(SeccionInterfaz.INICIO)
-                st.rerun()
-        with col_nav_productos:
-            if st.button(
-                TEXTO_BOTON_NAV_PRODUCTOS,
-                key="btn_nav_productos",
-                type="primary" if seccion_actual == SeccionInterfaz.PRODUCTOS else "secondary",
-                use_container_width=True,
-            ):
-                seleccionar_seccion_interfaz(SeccionInterfaz.PRODUCTOS)
                 st.rerun()
         with col_nav_gemini:
             if st.button(
@@ -2381,6 +2390,24 @@ def _renderizar_banner_encabezado() -> None:
                 use_container_width=True,
             ):
                 seleccionar_seccion_interfaz(SeccionInterfaz.ASISTENTE_GEMINI)
+                st.rerun()
+        with col_nav_productos:
+            if st.button(
+                TEXTO_BOTON_NAV_PRODUCTOS,
+                key="btn_nav_productos",
+                type="primary" if seccion_actual == SeccionInterfaz.PRODUCTOS else "secondary",
+                use_container_width=True,
+            ):
+                seleccionar_seccion_interfaz(SeccionInterfaz.PRODUCTOS)
+                st.rerun()
+        with col_nav_acerca_de:
+            if st.button(
+                TEXTO_BOTON_NAV_ACERCA_DE,
+                key="btn_nav_acerca_de",
+                type="primary" if seccion_actual == SeccionInterfaz.ACERCA_DE else "secondary",
+                use_container_width=True,
+            ):
+                seleccionar_seccion_interfaz(SeccionInterfaz.ACERCA_DE)
                 st.rerun()
 
     if seccion_actual == SeccionInterfaz.INICIO:
@@ -4206,11 +4233,87 @@ def _renderizar_area_inventario(
     st.info(f"ℹ️ {AVISO_ACCESO_PUBLICO}")
 
 
+def _renderizar_seccion_acerca_de() -> None:
+    """Renderiza la página pública informativa «Acerca de FerreteríaMS» (Prompt 19)."""
+    with st.container(border=True):
+        # 4.1. Encabezado
+        st.subheader(f"ℹ️ {TITULO_SECCION_ACERCA_DE}")
+        st.markdown(f"*{LEMA_SECCION_ACERCA_DE}*")
+
+        st.divider()
+
+        # 4.2. ¿Qué es FerreteríaMS?
+        st.markdown("#### 🛠️ ¿Qué es FerreteríaMS?")
+        st.markdown(
+            "FerreteríaMS es una aplicación diseñada para mejorar la experiencia de los clientes "
+            "dentro de una ferretería, facilitando la búsqueda de productos, su localización física "
+            "y el acceso a orientación técnica mediante inteligencia artificial."
+        )
+        st.markdown(
+            "Nuestro objetivo es facilitar la búsqueda de herramientas y materiales, ofreciendo una "
+            "forma rápida y sencilla de localizar productos y obtener información útil para realizar "
+            "diferentes proyectos."
+        )
+
+        st.divider()
+
+        # 4.3. ¿Qué puedes hacer con FerreteríaMS?
+        st.markdown("#### 📌 ¿Qué puedes hacer con FerreteríaMS?")
+        col_func_1, col_func_2, col_func_3 = st.columns(3)
+        with col_func_1:
+            st.markdown("🔍 **Buscar productos fácilmente**")
+            st.markdown(
+                "Encuentra artículos por su nombre, incluso utilizando palabras parciales, y consulta "
+                "los productos registrados en el catálogo de la ferretería."
+            )
+        with col_func_2:
+            st.markdown("📍 **Conocer su ubicación exacta**")
+            st.markdown(
+                "Identifica dónde se encuentra registrado cada producto mediante su rack, columna, "
+                "nivel y posición, sin tener que recorrer innecesariamente toda la tienda."
+            )
+        with col_func_3:
+            st.markdown("✨ **Recibir orientación con inteligencia artificial**")
+            st.markdown(
+                "Consulta al asistente sobre herramientas, materiales, métodos de uso, precauciones "
+                "y recomendaciones para realizar reparaciones o proyectos. Puedes comunicarte en "
+                "español o inglés."
+            )
+
+        st.divider()
+
+        # 4.4. ¿Cómo funciona?
+        st.markdown("#### 🧭 ¿Cómo funciona?")
+        st.markdown(
+            "1. Escribe el nombre del producto que necesitas en el buscador.\n"
+            "2. Selecciona el producto para consultar sus detalles y ubicación en la tienda.\n"
+            "3. Si necesitas orientación adicional, accede al Asistente y describe lo que deseas realizar.\n"
+            "4. Consulta las recomendaciones y verifica las instrucciones de seguridad antes de comenzar tu proyecto."
+        )
+
+        st.divider()
+
+        # 4.5. Nuestro propósito
+        st.markdown("#### 🎯 Nuestro propósito")
+        st.markdown(
+            "Queremos que la tecnología facilite las tareas cotidianas, ayudando a las personas a "
+            "encontrar lo que necesitan y a comprender mejor las herramientas y materiales que utilizan."
+        )
+        st.markdown(
+            "**FerreteríaMS combina localización de productos y orientación inteligente en una misma experiencia.**"
+        )
+
+        st.divider()
+
+        # 4.6. Nota informativa
+        st.markdown(f"> {NOTA_INFORMATIVA_ACERCA_DE}")
+
+
 def renderizar_aplicacion(
     descargador_remoto: DescargadorRemoto | None = None,
     cliente_generador_gemini: ClienteGeneradorGemini | None = None,
 ) -> None:
-    """Construye y renderiza la interfaz pública responsive, el chat Gemini y la administración."""
+    """Construye y renderiza la interfaz pública responsive, el chat Gemini, la administración y Acerca de."""
 
     st.set_page_config(
     page_title=TITULO,
@@ -4226,10 +4329,10 @@ def renderizar_aplicacion(
     _aplicar_estilos_locales()
     inicializar_estado_sesion()
 
-    # 1. Encabezado, identidad visual y navegación (Inicio / Productos / Asistente Gemini)
+    # 1. Encabezado, identidad visual y navegación (Inicio / Asistente / Configuración / Acerca de)
     _renderizar_banner_encabezado()
 
-    # 2. Renderizado de ancho completo de la página activa (DEC-FINAL-035)
+    # 2. Renderizado de ancho completo de la página activa (DEC-FINAL-035 y P19)
     seccion_activa = obtener_seccion_activa()
     if seccion_activa == SeccionInterfaz.PRODUCTOS:
         _renderizar_seccion_administrativa_productos(
@@ -4240,6 +4343,8 @@ def renderizar_aplicacion(
             descargador_remoto=descargador_remoto,
             cliente_generador=cliente_generador_gemini,
         )
+    elif seccion_activa == SeccionInterfaz.ACERCA_DE:
+        _renderizar_seccion_acerca_de()
     else:
         _renderizar_area_inventario(descargador_remoto=descargador_remoto)
 
