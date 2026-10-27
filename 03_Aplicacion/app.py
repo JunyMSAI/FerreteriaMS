@@ -277,7 +277,7 @@ from persistencia_github import (  # noqa: E402
 TITULO: str = "FerreteríaMS"
 ICONO_PAGINA: str = "🛠️"
 DESCRIPCION: str = (
-    "Ninguna tarea es difícil si tienes la herramienta correcta.\n\n"
+    "Ninguna tarea es difícil si tienes la herramienta correcta.  \n"
     "Busca productos por su nombre para consultar su registro en el inventario de la tienda."
 )
 TITULO_SECCION_BUSQUEDA: str = "Buscar productos"
