@@ -2419,7 +2419,7 @@ def _renderizar_banner_encabezado() -> None:
                     <p class="ferms-marca-subtitulo">
                         Localiza productos por su nombre y consulta su ubicación física exacta
                         (<strong>Rack</strong>, <strong>Columna</strong>, <strong>Nivel</strong> y <strong>Posición</strong>)
-                        dentro de la ferretería desde tu computadora, tableta o teléfono.
+                        dentro de la ferretería.
                     </p>
                 </div>
                 <div class="ferms-banner-pilares" aria-label="Características del servicio de consulta">
