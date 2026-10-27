@@ -277,7 +277,7 @@ from persistencia_github import (  # noqa: E402
 TITULO: str = "FerreteríaMS"
 ICONO_PAGINA: str = "🛠️"
 DESCRIPCION: str = (
-    "Encuentra rápidamente lo que necesitas para tus proyectos. "
+    "Ninguna tarea es difícil si tienes la herramienta correcta.\n\n"
     "Busca productos por su nombre para consultar su registro en el inventario de la tienda."
 )
 TITULO_SECCION_BUSQUEDA: str = "Buscar productos"
@@ -326,7 +326,7 @@ ALTURA_CONTENEDOR_CHAT_GEMINI_PX: int = 460
 TITULO_SECCION_ADMIN_LOGIN: str = "Acceso de administración"
 SUBTITULO_SECCION_ADMIN_LOGIN: str = (
     "Ingresa con tu usuario y contraseña para acceder al panel administrativo de configuración de productos.\n\n"
-    "NOTA: El usuario y la contraseña estaran incluidas en el documento de README"
+    "NOTA: El usuario y la contraseña están incluidas en el documento de README"
 )
 TITULO_SECCION_PRODUCTOS_ADMIN: str = "Configuración de productos — Panel administrativo"
 TEXTO_BOTON_LOGIN_ADMIN: str = "🔐 Iniciar sesión"
