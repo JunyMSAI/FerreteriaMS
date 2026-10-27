@@ -1141,6 +1141,134 @@ class TestSesionesBloqueosYBorradores(unittest.TestCase):
             self.assertIsNotNone(borrador_rest)
             self.assertEqual(borrador_rest.datos["codigo_producto"], "BRO001")
 
+    def test_41_sincronizacion_sesion_admin_carga_edicion_y_expiracion_real(self) -> None:
+        """Verifica login válido (~899s), resincronización tras rerun, carga, edición y expiración real."""
+        import administracion_productos as admin_prod
+
+        estado: dict[str, Any] = {}
+        app_ferms.inicializar_estado_sesion(estado)
+
+        # 1. Inicio de sesión válido y consulta pasiva tras ~1s (~899s restantes)
+        with self._parche_verificacion_controlada():
+            res_login = app_ferms.ejecutar_login_administrativo_en_sesion(
+                self.usuario,
+                self.clave,
+                estado=estado,
+                fuente_entorno=self.entorno,
+                contexto_dispositivo=auth.ContextoDispositivo.ESCRITORIO,
+                reloj=self.reloj,
+            )
+        self.assertTrue(res_login.autenticado)
+        sesion_inicial = estado[auth.CLAVE_SESION_ADMIN]
+        self.assertIsInstance(sesion_inicial, auth.EstadoSesionAdmin)
+
+        self.reloj.avanzar(1.0)
+        estado_tiempo = auth.consultar_estado_sesion_admin(
+            estado,
+            contexto_dispositivo=auth.ContextoDispositivo.ESCRITORIO,
+            reloj=self.reloj,
+        )
+        self.assertTrue(estado_tiempo.autenticado)
+        self.assertAlmostEqual(estado_tiempo.segundos_restantes, 899.0, places=3)
+
+        # 2. Simular desfase de rerun donde el servidor actualizó ultima_actividad_epoch pero
+        #    st.session_state conserva la instantánea previa (t_servidor > t_cliente).
+        self.reloj.avanzar(2.0)
+        reg_srv = auth._SESIONES_ACTIVAS_SERVIDOR[sesion_inicial.token_sesion]
+        reg_srv.ultima_actividad_epoch = self.reloj()
+        sesion_autorizada = auth.requerir_autorizacion_admin(
+            estado,
+            contexto_dispositivo=auth.ContextoDispositivo.ESCRITORIO,
+            reloj=self.reloj,
+        )
+        self.assertTrue(sesion_autorizada.autenticado)
+        self.assertAlmostEqual(
+            estado[auth.CLAVE_SESION_ADMIN].ultima_actividad_epoch,
+            reg_srv.ultima_actividad_epoch,
+            places=5,
+        )
+
+        # 3. Simular pérdida de entrada en `_SESIONES_ACTIVAS_SERVIDOR` tras rerun con sesión
+        #    firmada válidamente y no revocada.
+        auth._SESIONES_ACTIVAS_SERVIDOR.pop(sesion_inicial.token_sesion, None)
+        self.assertTrue(
+            auth.esta_autenticado_en_sesion(
+                estado,
+                contexto_dispositivo=auth.ContextoDispositivo.ESCRITORIO,
+                reloj=self.reloj,
+            )
+        )
+        self.assertIn(sesion_inicial.token_sesion, auth._SESIONES_ACTIVAS_SERVIDOR)
+
+        # 4. Carga administrativa de inventario y edición autorizada de producto
+        inv_simulado = _construir_inventario_simulado_p08()
+        lectura_remota = gh.ResultadoLecturaInventarioRemoto(
+            propietario="JunyMSAI",
+            repositorio="FerreteriaMS",
+            rama="main",
+            ruta_archivo="03_Aplicacion/inventario.xlsx",
+            sha_github="a" * 40,
+            sha256_local="b" * 64,
+            tamano_bytes=1024,
+            inventario=inv_simulado,
+            categoria_consulta=gh.CategoriaResultadoConsulta.INVENTARIO_DISPONIBLE,
+        )
+        res_carga = app_ferms.ejecutar_carga_inventario_admin_en_sesion(
+            estado,
+            descargador_remoto=lambda **_: lectura_remota,
+            contexto_dispositivo=auth.ContextoDispositivo.ESCRITORIO,
+            reloj=self.reloj,
+        )
+        self.assertIsNotNone(res_carga)
+        assert res_carga is not None
+        self.assertEqual(
+            res_carga.estado,
+            admin_prod.EstadoInventarioAdmin.INVENTARIO_DISPONIBLE_EDICION_LOCAL,
+        )
+
+        self.reloj.avanzar(3.0)
+        res_edicion = app_ferms.ejecutar_edicion_producto_en_sesion(
+            codigo_producto="MAR001",
+            nombre="Martillo de uña profesional forjado",
+            categoria_id="CAT01",
+            descripcion="Martillo reforzado para carpintería.",
+            ubicaciones_ids=["U001"],
+            ubicacion_principal_id="U001",
+            estado=estado,
+            contexto_dispositivo=auth.ContextoDispositivo.ESCRITORIO,
+            reloj=self.reloj,
+        )
+        self.assertTrue(res_edicion.exito)
+        self.assertEqual(
+            res_edicion.producto["nombre"],
+            "Martillo de uña profesional forjado",
+        )
+
+        # 5. Rechazo de sesión verdaderamente expirada (>= 15 minutos de inactividad)
+        self.reloj.avanzar(auth.TIEMPO_EXPIRACION_INACTIVIDAD_SEGUNDOS + 1.0)
+        with self.assertRaises(auth.ErrorAutorizacionAdmin) as ctx_exp:
+            auth.requerir_autorizacion_admin(
+                estado,
+                contexto_dispositivo=auth.ContextoDispositivo.ESCRITORIO,
+                reloj=self.reloj,
+            )
+        self.assertEqual(
+            ctx_exp.exception.codigo,
+            auth.CodigoResultadoAutenticacion.SESION_EXPIRADA,
+        )
+        res_edicion_expirada = app_ferms.ejecutar_edicion_producto_en_sesion(
+            codigo_producto="MAR001",
+            nombre="Intento con sesión expirada",
+            estado=estado,
+            contexto_dispositivo=auth.ContextoDispositivo.ESCRITORIO,
+            reloj=self.reloj,
+        )
+        self.assertFalse(res_edicion_expirada.exito)
+        self.assertEqual(
+            res_edicion_expirada.codigo_error,
+            admin_prod.CodigoErrorAdministrativo.SESION_EXPIRADA,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

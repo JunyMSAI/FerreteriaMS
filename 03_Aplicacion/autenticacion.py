@@ -41,6 +41,7 @@ import math
 import os
 import re
 import secrets
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -77,8 +78,15 @@ _HASHER_ARGON2ID = PasswordHasher(
 # cómputo uniforme cuando el usuario o la configuración no permiten verificar un hash real.
 _HASH_FANTASMA_TIEMPO_CONSTANTE: str = _HASHER_ARGON2ID.hash(secrets.token_urlsafe(24))
 
-# Clave efímera del servidor por proceso para firmar tokens de sesión, comprobantes y vínculos de borrador
-_CLAVE_FIRMA_SESION_PROCESO: bytes = secrets.token_bytes(32)
+# Clave efímera del servidor por proceso para firmar tokens de sesión, comprobantes y vínculos de borrador.
+# Se ancla en `sys.__dict__` para evitar que una recarga del módulo en reruns de Streamlit invalide firmas activas.
+_ESTADO_PROCESO_SERVIDOR_AUTH: dict[str, Any] = sys.__dict__.setdefault(
+    "_ferms_estado_proceso_servidor_auth",
+    {},
+)
+if not isinstance(_ESTADO_PROCESO_SERVIDOR_AUTH.get("clave_firma_proceso"), bytes):
+    _ESTADO_PROCESO_SERVIDOR_AUTH["clave_firma_proceso"] = secrets.token_bytes(32)
+_CLAVE_FIRMA_SESION_PROCESO: bytes = _ESTADO_PROCESO_SERVIDOR_AUTH["clave_firma_proceso"]
 
 # Variables de entorno y claves en `st.secrets` soportadas para la única cuenta administrativa
 VARIABLES_ENTORNO_ADMIN_USUARIO: tuple[str, ...] = (
@@ -374,6 +382,8 @@ class EstadoSesionAdmin:
     autenticado_en_epoch: float
     ultima_actividad_epoch: float
     contexto_dispositivo: ContextoDispositivo = ContextoDispositivo.ESCRITORIO
+    id_comprobante_origen: str = field(default="", repr=False, compare=False)
+    huella_configuracion: str = field(default="", repr=False, compare=False)
 
     def __repr__(self) -> str:
         return (
@@ -577,25 +587,66 @@ _TTL_COMPROBANTE_VERIFICACION_SEGUNDOS: float = 60.0
 
 # Cerrojo reentrante compartido a nivel de proceso para proteger todos los registros de seguridad
 # frente a condiciones de carrera ante solicitudes concurrentes (Secciones 5 y 10 del Prompt 08).
-_CANDADO_SEGURIDAD_SERVIDOR = threading.RLock()
+if _ESTADO_PROCESO_SERVIDOR_AUTH.get("candado_seguridad") is None:
+    _ESTADO_PROCESO_SERVIDOR_AUTH["candado_seguridad"] = threading.RLock()
+_CANDADO_SEGURIDAD_SERVIDOR: threading.RLock = _ESTADO_PROCESO_SERVIDOR_AUTH["candado_seguridad"]
 
 # Proveedor de tiempo por defecto del servidor (puede sustituirse en pruebas mediante `configurar_reloj_servidor_pruebas`)
-_RELOJ_SERVIDOR_ACTIVO: ProveedorReloj = time.time
+_RELOJ_SERVIDOR_ACTIVO: ProveedorReloj = _ESTADO_PROCESO_SERVIDOR_AUTH.get(
+    "reloj_servidor_activo",
+    time.time,
+)
 
 # Almacén en memoria del servidor de comprobantes de verificación pendientes de canje (un solo uso).
-_COMPROBANTES_VERIFICACION_SERVIDOR: dict[str, _RegistroComprobanteServidor] = {}
+_COMPROBANTES_VERIFICACION_SERVIDOR: dict[str, _RegistroComprobanteServidor] = (
+    _ESTADO_PROCESO_SERVIDOR_AUTH.setdefault("comprobantes_verificacion", {})
+)
 
 # Almacén en memoria del servidor de sesiones autenticadas vigentes, indexado por `token_sesion`.
-_SESIONES_ACTIVAS_SERVIDOR: dict[str, _RegistroSesionServidor] = {}
+_SESIONES_ACTIVAS_SERVIDOR: dict[str, _RegistroSesionServidor] = (
+    _ESTADO_PROCESO_SERVIDOR_AUTH.setdefault("sesiones_activas", {})
+)
 
 # Almacén en memoria del servidor de borradores administrativos temporales, indexado por `id_borrador`.
-_BORRADORES_TEMPORALES_SERVIDOR: dict[str, _RegistroBorradorServidor] = {}
+_BORRADORES_TEMPORALES_SERVIDOR: dict[str, _RegistroBorradorServidor] = (
+    _ESTADO_PROCESO_SERVIDOR_AUTH.setdefault("borradores_temporales", {})
+)
 
 # Registro acotado de tokens de sesión revocados por expiración o logout para auditoría e invalidación.
-_TOKENS_REVOCADOS_SERVIDOR: dict[str, float] = {}
+_TOKENS_REVOCADOS_SERVIDOR: dict[str, float] = (
+    _ESTADO_PROCESO_SERVIDOR_AUTH.setdefault("tokens_revocados", {})
+)
 
 # Estado global compartido en proceso para intentos fallidos y bloqueos progresivos.
-_ESTADO_BLOQUEO_SERVIDOR = _EstadoControlIntentosServidor()
+if not isinstance(
+    _ESTADO_PROCESO_SERVIDOR_AUTH.get("estado_bloqueo"),
+    _EstadoControlIntentosServidor,
+):
+    previo_bloq = _ESTADO_PROCESO_SERVIDOR_AUTH.get("estado_bloqueo")
+    if previo_bloq is not None and type(previo_bloq).__name__ == "_EstadoControlIntentosServidor":
+        _ESTADO_PROCESO_SERVIDOR_AUTH["estado_bloqueo"] = _EstadoControlIntentosServidor(
+            intentos_fallidos_consecutivos=int(
+                getattr(previo_bloq, "intentos_fallidos_consecutivos", 0)
+            ),
+            intentos_fallidos_totales_acumulados=int(
+                getattr(previo_bloq, "intentos_fallidos_totales_acumulados", 0)
+            ),
+            nivel_bloqueo_consecutivo=int(
+                getattr(previo_bloq, "nivel_bloqueo_consecutivo", 0)
+            ),
+            bloqueado_hasta_epoch=getattr(previo_bloq, "bloqueado_hasta_epoch", None),
+            duracion_bloqueo_actual_segundos=int(
+                getattr(previo_bloq, "duracion_bloqueo_actual_segundos", 0)
+            ),
+            ultimo_intento_fallido_epoch=getattr(
+                previo_bloq, "ultimo_intento_fallido_epoch", None
+            ),
+        )
+    else:
+        _ESTADO_PROCESO_SERVIDOR_AUTH["estado_bloqueo"] = _EstadoControlIntentosServidor()
+_ESTADO_BLOQUEO_SERVIDOR: _EstadoControlIntentosServidor = _ESTADO_PROCESO_SERVIDOR_AUTH[
+    "estado_bloqueo"
+]
 
 
 def configurar_reloj_servidor_pruebas(reloj: ProveedorReloj | None = None) -> None:
@@ -603,6 +654,7 @@ def configurar_reloj_servidor_pruebas(reloj: ProveedorReloj | None = None) -> No
     global _RELOJ_SERVIDOR_ACTIVO
     with _CANDADO_SEGURIDAD_SERVIDOR:
         _RELOJ_SERVIDOR_ACTIVO = reloj if reloj is not None else time.time
+        _ESTADO_PROCESO_SERVIDOR_AUTH["reloj_servidor_activo"] = _RELOJ_SERVIDOR_ACTIVO
 
 
 def _obtener_tiempo_actual(
@@ -1504,19 +1556,118 @@ def _limpiar_marcadores_publicos_manipulables(estado: Any) -> None:
                 estado[clave_sospechosa] = None
 
 
+def _normalizar_contexto_dispositivo_instancia(valor: Any) -> ContextoDispositivo | None:
+    """Normaliza una instancia de `ContextoDispositivo`, incluso tras recarga del módulo."""
+    if isinstance(valor, ContextoDispositivo):
+        return valor
+    if isinstance(valor, Enum) and isinstance(valor.value, str):
+        for miembro in ContextoDispositivo:
+            if miembro.value == valor.value:
+                return miembro
+    return None
+
+
+def _normalizar_objeto_sesion_admin(objeto: Any) -> EstadoSesionAdmin | None:
+    """Valida y normaliza un objeto `EstadoSesionAdmin` (soportando recargas de módulo en Streamlit)."""
+    if isinstance(objeto, EstadoSesionAdmin):
+        return objeto
+    if (
+        objeto is None
+        or isinstance(objeto, Mapping)
+        or type(objeto).__name__ != "EstadoSesionAdmin"
+    ):
+        return None
+    try:
+        autenticado = getattr(objeto, "autenticado", None)
+        usuario = getattr(objeto, "usuario", None)
+        token_sesion = getattr(objeto, "token_sesion", None)
+        firma_hmac = getattr(objeto, "firma_hmac", None)
+        autenticado_en_epoch = getattr(objeto, "autenticado_en_epoch", None)
+        ultima_actividad_epoch = getattr(objeto, "ultima_actividad_epoch", None)
+        ctx_raw = getattr(objeto, "contexto_dispositivo", None)
+        id_comp = getattr(objeto, "id_comprobante_origen", "") or ""
+        huella_cfg = getattr(objeto, "huella_configuracion", "") or ""
+        ctx = _normalizar_contexto_dispositivo_instancia(ctx_raw)
+        if (
+            not isinstance(autenticado, bool)
+            or not isinstance(usuario, str)
+            or not isinstance(token_sesion, str)
+            or not isinstance(firma_hmac, str)
+            or not isinstance(autenticado_en_epoch, (int, float))
+            or not isinstance(ultima_actividad_epoch, (int, float))
+            or ctx is None
+            or not isinstance(id_comp, str)
+            or not isinstance(huella_cfg, str)
+        ):
+            return None
+        return EstadoSesionAdmin(
+            autenticado=autenticado,
+            usuario=usuario,
+            token_sesion=token_sesion,
+            firma_hmac=firma_hmac,
+            autenticado_en_epoch=float(autenticado_en_epoch),
+            ultima_actividad_epoch=float(ultima_actividad_epoch),
+            contexto_dispositivo=ctx,
+            id_comprobante_origen=id_comp,
+            huella_configuracion=huella_cfg,
+        )
+    except Exception:
+        return None
+
+
+def _normalizar_vinculo_borrador_sesion(vinculo: Any) -> _VinculoBorradorSesion | None:
+    """Valida y normaliza un `_VinculoBorradorSesion` (soportando recargas de módulo)."""
+    if isinstance(vinculo, _VinculoBorradorSesion):
+        return vinculo
+    if (
+        vinculo is None
+        or isinstance(vinculo, Mapping)
+        or type(vinculo).__name__ != "_VinculoBorradorSesion"
+    ):
+        return None
+    try:
+        id_borrador = getattr(vinculo, "id_borrador", None)
+        usuario = getattr(vinculo, "usuario", None)
+        huella_configuracion = getattr(vinculo, "huella_configuracion", None)
+        creado_en_epoch = getattr(vinculo, "creado_en_epoch", None)
+        firma_hmac = getattr(vinculo, "firma_hmac", None)
+        if (
+            not isinstance(id_borrador, str)
+            or not isinstance(usuario, str)
+            or not isinstance(huella_configuracion, str)
+            or not isinstance(creado_en_epoch, (int, float))
+            or not isinstance(firma_hmac, str)
+        ):
+            return None
+        return _VinculoBorradorSesion(
+            id_borrador=id_borrador,
+            usuario=usuario,
+            huella_configuracion=huella_configuracion,
+            creado_en_epoch=float(creado_en_epoch),
+            firma_hmac=firma_hmac,
+        )
+    except Exception:
+        return None
+
+
 def _es_vinculo_borrador_valido(vinculo: Any) -> bool:
     """Verifica la firma HMAC de un `_VinculoBorradorSesion`."""
-    if not isinstance(vinculo, _VinculoBorradorSesion):
+    vinculo_norm = _normalizar_vinculo_borrador_sesion(vinculo)
+    if vinculo_norm is None:
         return False
-    if not vinculo.id_borrador or not vinculo.usuario or not vinculo.huella_configuracion:
+    if (
+        not vinculo_norm.id_borrador
+        or not vinculo_norm.usuario
+        or not vinculo_norm.huella_configuracion
+    ):
         return False
     firma_esperada = _calcular_firma_vinculo_borrador(
-        id_borrador=vinculo.id_borrador,
-        usuario=vinculo.usuario,
-        huella_configuracion=vinculo.huella_configuracion,
-        creado_en_epoch=vinculo.creado_en_epoch,
+        id_borrador=vinculo_norm.id_borrador,
+        usuario=vinculo_norm.usuario,
+        huella_configuracion=vinculo_norm.huella_configuracion,
+        creado_en_epoch=vinculo_norm.creado_en_epoch,
     )
-    return hmac.compare_digest(vinculo.firma_hmac, firma_esperada)
+    return hmac.compare_digest(vinculo_norm.firma_hmac, firma_esperada)
 
 
 def registrar_autenticacion_en_sesion(
@@ -1684,8 +1835,10 @@ def registrar_autenticacion_en_sesion(
             raise ValueError("El nombre de usuario administrativo para la sesión no es válido.")
 
         # Si existía un token previo en esta sesión, revocarlo antes de emitir uno nuevo
-        sesion_anterior = _obtener_de_estado(estado, CLAVE_SESION_ADMIN)
-        if isinstance(sesion_anterior, EstadoSesionAdmin):
+        sesion_anterior = _normalizar_objeto_sesion_admin(
+            _obtener_de_estado(estado, CLAVE_SESION_ADMIN)
+        )
+        if sesion_anterior is not None:
             _SESIONES_ACTIVAS_SERVIDOR.pop(sesion_anterior.token_sesion, None)
             _registrar_token_revocado(sesion_anterior.token_sesion, ahora_sistema)
 
@@ -1706,8 +1859,10 @@ def registrar_autenticacion_en_sesion(
 
         # Comprobar si esta sesión posee un borrador retenido válido para revincularlo tras reautenticación
         id_borrador_revinculado: str | None = None
-        vinculo_existente = _obtener_de_estado(estado, CLAVE_VINCULO_BORRADOR_SESION)
-        if _es_vinculo_borrador_valido(vinculo_existente):
+        vinculo_existente = _normalizar_vinculo_borrador_sesion(
+            _obtener_de_estado(estado, CLAVE_VINCULO_BORRADOR_SESION)
+        )
+        if vinculo_existente is not None and _es_vinculo_borrador_valido(vinculo_existente):
             reg_borr = _BORRADORES_TEMPORALES_SERVIDOR.get(vinculo_existente.id_borrador)
             if (
                 reg_borr is not None
@@ -1737,6 +1892,8 @@ def registrar_autenticacion_en_sesion(
             autenticado_en_epoch=ahora,
             ultima_actividad_epoch=ahora,
             contexto_dispositivo=contexto_efectivo,
+            id_comprobante_origen=registro_comp.id_comprobante,
+            huella_configuracion=registro_comp.huella_configuracion,
         )
         _SESIONES_ACTIVAS_SERVIDOR[token_nuevo] = _RegistroSesionServidor(
             token_sesion=token_nuevo,
@@ -1770,8 +1927,10 @@ def _revocar_sesion_por_expiracion_en_estado(
             _transicionar_borrador_por_expiracion_sesion(registro_servidor, ahora_epoch)
 
         if _es_estado_escritura_valido(estado):
-            actual = _obtener_de_estado(estado, CLAVE_SESION_ADMIN)
-            if isinstance(actual, EstadoSesionAdmin):
+            actual = _normalizar_objeto_sesion_admin(
+                _obtener_de_estado(estado, CLAVE_SESION_ADMIN)
+            )
+            if actual is not None:
                 _SESIONES_ACTIVAS_SERVIDOR.pop(actual.token_sesion, None)
                 _registrar_token_revocado(actual.token_sesion, ahora_epoch)
             estado[CLAVE_SESION_ADMIN] = None
@@ -1800,12 +1959,13 @@ def cerrar_sesion_admin(
 
     with _CANDADO_SEGURIDAD_SERVIDOR:
         ahora = _obtener_tiempo_actual(reloj, ahora_epoch)
-        actual = _obtener_de_estado(estado, CLAVE_SESION_ADMIN)
+        actual_raw = _obtener_de_estado(estado, CLAVE_SESION_ADMIN)
+        actual_norm = _normalizar_objeto_sesion_admin(actual_raw)
         token_a_revocar: str | None = None
-        if isinstance(actual, EstadoSesionAdmin):
-            token_a_revocar = actual.token_sesion
-        elif isinstance(actual, Mapping):
-            token_posible = actual.get("token_sesion")
+        if actual_norm is not None:
+            token_a_revocar = actual_norm.token_sesion
+        elif isinstance(actual_raw, Mapping):
+            token_posible = actual_raw.get("token_sesion")
             if isinstance(token_posible, str):
                 token_a_revocar = token_posible
 
@@ -1815,8 +1975,10 @@ def cerrar_sesion_admin(
             _registrar_token_revocado(token_a_revocar, ahora)
 
         if not conservar_borrador_temporal:
-            vinculo = _obtener_de_estado(estado, CLAVE_VINCULO_BORRADOR_SESION)
-            if isinstance(vinculo, _VinculoBorradorSesion):
+            vinculo = _normalizar_vinculo_borrador_sesion(
+                _obtener_de_estado(estado, CLAVE_VINCULO_BORRADOR_SESION)
+            )
+            if vinculo is not None:
                 _BORRADORES_TEMPORALES_SERVIDOR.pop(vinculo.id_borrador, None)
             if reg_ses is not None and reg_ses.id_borrador_asociado:
                 _BORRADORES_TEMPORALES_SERVIDOR.pop(reg_ses.id_borrador_asociado, None)
@@ -1867,9 +2029,13 @@ def esta_autenticado_en_sesion(
         if contexto_efectivo == ContextoDispositivo.MOVIL:
             return False
 
-        objeto_sesion = _obtener_de_estado(estado, CLAVE_SESION_ADMIN)
-        if not isinstance(objeto_sesion, EstadoSesionAdmin):
+        objeto_original = _obtener_de_estado(estado, CLAVE_SESION_ADMIN)
+        objeto_sesion = _normalizar_objeto_sesion_admin(objeto_original)
+        if objeto_sesion is None:
             return False
+
+        if objeto_sesion is not objeto_original and _es_estado_escritura_valido(estado):
+            estado[CLAVE_SESION_ADMIN] = objeto_sesion
 
         if not objeto_sesion.autenticado:
             return False
@@ -1887,7 +2053,38 @@ def esta_autenticado_en_sesion(
 
         registro_servidor = _SESIONES_ACTIVAS_SERVIDOR.get(objeto_sesion.token_sesion)
         if registro_servidor is None:
-            return False
+            # Si `_SESIONES_ACTIVAS_SERVIDOR` perdió la entrada tras un rerun pero el token no
+            # está revocado y el objeto porta el comprobante y firma HMAC válidos del proceso:
+            if (
+                not objeto_sesion.id_comprobante_origen
+                or not objeto_sesion.huella_configuracion
+            ):
+                return False
+            if (
+                objeto_sesion.ultima_actividad_epoch < objeto_sesion.autenticado_en_epoch - 1e-4
+                or objeto_sesion.ultima_actividad_epoch > ahora + 1e-4
+            ):
+                return False
+            firma_recuperacion = _calcular_firma_sesion(
+                usuario=objeto_sesion.usuario,
+                token_sesion=objeto_sesion.token_sesion,
+                id_comprobante=objeto_sesion.id_comprobante_origen,
+                autenticado_en_epoch=objeto_sesion.autenticado_en_epoch,
+                contexto_dispositivo=objeto_sesion.contexto_dispositivo,
+            )
+            if not hmac.compare_digest(objeto_sesion.firma_hmac, firma_recuperacion):
+                return False
+            registro_servidor = _RegistroSesionServidor(
+                token_sesion=objeto_sesion.token_sesion,
+                usuario=objeto_sesion.usuario,
+                id_comprobante_origen=objeto_sesion.id_comprobante_origen,
+                huella_configuracion=objeto_sesion.huella_configuracion,
+                firma_hmac=objeto_sesion.firma_hmac,
+                autenticado_en_epoch=objeto_sesion.autenticado_en_epoch,
+                ultima_actividad_epoch=objeto_sesion.ultima_actividad_epoch,
+                contexto_dispositivo=objeto_sesion.contexto_dispositivo,
+            )
+            _SESIONES_ACTIVAS_SERVIDOR[objeto_sesion.token_sesion] = registro_servidor
 
         if not registro_servidor.id_comprobante_origen or not registro_servidor.huella_configuracion:
             return False
@@ -1906,16 +2103,39 @@ def esta_autenticado_en_sesion(
         if not hmac.compare_digest(registro_servidor.usuario, objeto_sesion.usuario):
             return False
 
-        # Rechazar manipulación de marcas temporales en `st.session_state` (Sección 6.1 del Prompt 08)
+        # Rechazar manipulación de marcas temporales en `st.session_state` (Sección 6.1 del Prompt 08).
+        # Si el cliente altera `autenticado_en_epoch` o intenta adelantar `ultima_actividad_epoch`
+        # por encima de la autoridad del servidor (o antes del inicio de sesión), se revoca la sesión.
         if (
             abs(objeto_sesion.autenticado_en_epoch - registro_servidor.autenticado_en_epoch) > 1e-4
-            or abs(objeto_sesion.ultima_actividad_epoch - registro_servidor.ultima_actividad_epoch) > 1e-4
+            or objeto_sesion.ultima_actividad_epoch > registro_servidor.ultima_actividad_epoch + 1e-4
+            or objeto_sesion.ultima_actividad_epoch < registro_servidor.autenticado_en_epoch - 1e-4
         ):
             _SESIONES_ACTIVAS_SERVIDOR.pop(registro_servidor.token_sesion, None)
             _registrar_token_revocado(registro_servidor.token_sesion, ahora)
             if _es_estado_escritura_valido(estado):
                 estado[CLAVE_SESION_ADMIN] = None
             return False
+
+        # Si el servidor posee una `ultima_actividad_epoch` legítima más reciente que la instantánea
+        # de `st.session_state` (p. ej., tras un rerun de Streamlit interrumpido en un yield point),
+        # resincronizar el estado de sesión con la autoridad del servidor sin revocar el token.
+        if (
+            registro_servidor.ultima_actividad_epoch - objeto_sesion.ultima_actividad_epoch > 1e-4
+            and _es_estado_escritura_valido(estado)
+        ):
+            objeto_sesion = EstadoSesionAdmin(
+                autenticado=True,
+                usuario=registro_servidor.usuario,
+                token_sesion=registro_servidor.token_sesion,
+                firma_hmac=registro_servidor.firma_hmac,
+                autenticado_en_epoch=registro_servidor.autenticado_en_epoch,
+                ultima_actividad_epoch=registro_servidor.ultima_actividad_epoch,
+                contexto_dispositivo=registro_servidor.contexto_dispositivo,
+                id_comprobante_origen=registro_servidor.id_comprobante_origen,
+                huella_configuracion=registro_servidor.huella_configuracion,
+            )
+            estado[CLAVE_SESION_ADMIN] = objeto_sesion
 
         # Comprobar expiración tras 15 minutos de inactividad usando la autoridad del servidor
         inactividad = ahora - registro_servidor.ultima_actividad_epoch
@@ -1943,7 +2163,7 @@ def consultar_estado_sesion_admin(
         _depurar_borradores_vencidos(ahora)
 
         objeto_previo = _obtener_de_estado(estado, CLAVE_SESION_ADMIN)
-        tenia_objeto_sesion = isinstance(objeto_previo, EstadoSesionAdmin)
+        tenia_objeto_sesion = _normalizar_objeto_sesion_admin(objeto_previo) is not None
 
         autenticado = esta_autenticado_en_sesion(
             estado,
@@ -2137,7 +2357,11 @@ def requerir_autorizacion_admin(
             )
 
         assert estado is not None
-        return estado[CLAVE_SESION_ADMIN]
+        sesion_norm = _normalizar_objeto_sesion_admin(
+            _obtener_de_estado(estado, CLAVE_SESION_ADMIN)
+        )
+        assert sesion_norm is not None
+        return sesion_norm
 
 
 def registrar_actividad_administrativa(
@@ -2169,7 +2393,6 @@ def registrar_actividad_administrativa(
                 codigo=CodigoResultadoAutenticacion.CREDENCIALES_INVALIDAS,
             )
 
-        registro_servidor.ultima_actividad_epoch = ahora
         sesion_actualizada = EstadoSesionAdmin(
             autenticado=True,
             usuario=sesion_actual.usuario,
@@ -2178,8 +2401,14 @@ def registrar_actividad_administrativa(
             autenticado_en_epoch=sesion_actual.autenticado_en_epoch,
             ultima_actividad_epoch=ahora,
             contexto_dispositivo=sesion_actual.contexto_dispositivo,
+            id_comprobante_origen=registro_servidor.id_comprobante_origen,
+            huella_configuracion=registro_servidor.huella_configuracion,
         )
+        # Actualizar `estado[CLAVE_SESION_ADMIN]` antes de mutar `registro_servidor` para que
+        # un punto de cesión (yield) de Streamlit en `SafeSessionState.__setitem__` no deje al
+        # servidor adelantado respecto a la instantánea de `st.session_state`.
         estado[CLAVE_SESION_ADMIN] = sesion_actualizada
+        registro_servidor.ultima_actividad_epoch = ahora
         return sesion_actualizada
 
 

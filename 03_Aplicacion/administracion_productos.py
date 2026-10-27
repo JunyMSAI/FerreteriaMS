@@ -681,13 +681,20 @@ def _convertir_error_motor_inventario(
 
 def _sincronizar_borrador_tras_expiracion_si_corresponde(
     estado: Any,
+    *,
+    contexto_dispositivo: ContextoDispositivo | None = None,
     reloj: ProveedorReloj | None = None,
     ahora_epoch: float | None = None,
 ) -> None:
     """Si la sesión acaba de expirar, desactiva el espacio de trabajo activo en sesión."""
     if not isinstance(estado, MutableMapping):
         return
-    if not esta_autenticado_en_sesion(estado, reloj=reloj, ahora_epoch=ahora_epoch):
+    if not esta_autenticado_en_sesion(
+        estado,
+        contexto_dispositivo=contexto_dispositivo,
+        reloj=reloj,
+        ahora_epoch=ahora_epoch,
+    ):
         # No se permite seguir operando sobre el espacio de trabajo sin reautenticación;
         # los cambios previos permanecen en el borrador retenido del servidor por 15 min.
         estado[CLAVE_ESPACIO_TRABAJO_ADMIN] = None
@@ -708,9 +715,8 @@ def _exigir_sesion_admin_autorizada(
     - Verifica sesión activa y no expirada en `_SESIONES_ACTIVAS_SERVIDOR`.
     - Registra actividad administrativa únicamente cuando `registrar_actividad=True`.
     """
-    estado_bloqueo = consultar_estado_bloqueo_admin(
-        reloj=reloj, ahora_epoch=ahora_epoch
-    )
+    ahora_eval = autenticacion._obtener_tiempo_actual(reloj, ahora_epoch)
+    estado_bloqueo = consultar_estado_bloqueo_admin(ahora_epoch=ahora_eval)
     if estado_bloqueo.esta_bloqueado:
         raise ErrorAutorizacionAdmin(
             estado_bloqueo.mensaje_usuario,
@@ -718,21 +724,21 @@ def _exigir_sesion_admin_autorizada(
         )
 
     _sincronizar_borrador_tras_expiracion_si_corresponde(
-        estado, reloj=reloj, ahora_epoch=ahora_epoch
+        estado,
+        contexto_dispositivo=contexto_dispositivo,
+        ahora_epoch=ahora_eval,
     )
 
     sesion_actual = requerir_autorizacion_admin(
         estado,
         contexto_dispositivo=contexto_dispositivo,
-        reloj=reloj,
-        ahora_epoch=ahora_epoch,
+        ahora_epoch=ahora_eval,
     )
     if registrar_actividad:
         sesion_actual = registrar_actividad_administrativa(
             estado,
             contexto_dispositivo=contexto_dispositivo,
-            reloj=reloj,
-            ahora_epoch=ahora_epoch,
+            ahora_epoch=ahora_eval,
         )
     return sesion_actual
 
@@ -769,6 +775,16 @@ def _obtener_espacio_trabajo_autorizado(
             codigo=CodigoErrorAdministrativo.ESPACIO_TRABAJO_NO_INICIALIZADO,
             estado=EstadoInventarioAdmin.NO_CARGADO,
         )
+
+    # Si el espacio proviene del mismo contenedor `estado` y pertenece a la misma cuenta
+    # administrativa cuyo token anterior ya fue sustituido tras reautenticación, revincularlo.
+    if (
+        espacio_explicito is None
+        and espacio.usuario_propietario == sesion.usuario
+        and espacio.id_sesion_propietaria != sesion.token_sesion
+        and espacio.id_sesion_propietaria not in autenticacion._SESIONES_ACTIVAS_SERVIDOR
+    ):
+        espacio.id_sesion_propietaria = sesion.token_sesion
 
     # Aislamiento estricto entre sesiones y cuentas administrativas (Secciones 7 y 11)
     if (
@@ -1451,6 +1467,9 @@ def cargar_inventario_administrativo_en_sesion(
         )
         estado[CLAVE_RESULTADO_CARGA_ADMIN] = resultado_red
         return resultado_red
+
+    except ErrorAutorizacionAdmin:
+        raise
 
     except Exception as exc_gen:
         estado[CLAVE_ESPACIO_TRABAJO_ADMIN] = None

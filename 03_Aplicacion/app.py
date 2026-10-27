@@ -554,6 +554,22 @@ def ejecutar_login_administrativo_en_sesion(
         contexto_dispositivo=contexto_dispositivo,
         reloj=reloj,
     )
+    if resultado.autenticado and resultado.estado_sesion is not None:
+        espacio_previo = destino.get(CLAVE_ESPACIO_TRABAJO_ADMIN)
+        if isinstance(espacio_previo, EspacioTrabajoAdminInventario):
+            if (
+                espacio_previo.usuario_propietario == resultado.estado_sesion.usuario
+                and espacio_previo.id_sesion_propietaria
+                not in autenticacion._SESIONES_ACTIVAS_SERVIDOR
+            ):
+                espacio_previo.id_sesion_propietaria = (
+                    resultado.estado_sesion.token_sesion
+                )
+            elif (
+                espacio_previo.usuario_propietario != resultado.estado_sesion.usuario
+            ):
+                destino[CLAVE_ESPACIO_TRABAJO_ADMIN] = None
+                destino[CLAVE_RESULTADO_CARGA_ADMIN] = None
     destino[CLAVE_MENSAJE_AUTH_ADMIN] = {
         "tipo": "success" if resultado.autenticado else "error",
         "codigo": resultado.codigo.value,
