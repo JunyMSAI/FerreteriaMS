@@ -2348,7 +2348,7 @@ def _renderizar_banner_encabezado() -> None:
     seccion_actual = obtener_seccion_activa()
     with col_nav:
         col_nav_inicio, col_nav_gemini, col_nav_productos = st.columns(
-            [1, 1.1, 1.45], gap="small"
+            [1, 1.1, 1.1], gap="small"
         )
         with col_nav_inicio:
             if st.button(
