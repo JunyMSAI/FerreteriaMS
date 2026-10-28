@@ -53,5 +53,4 @@ Prompts: Objetivo y necesidad atendida
 - **P19 — Página Acerca de FerreteriaMS:** [19_Pagina_Acerca_de_FerreteriaMS.md](../02_Prompts/19_Pagina_Acerca_de_FerreteriaMS.md),
     Crear la página informativa relacionada a la FerreteriaMS.
 
-    - [GEMINI.md](../GEMINI.md)
-    - [GEMINI.md](./GEMINI.md)
+    - [GEMINI.md](../GEMINI.md)    
