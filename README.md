@@ -46,7 +46,7 @@
 	- [GEMINI.md](../GEMINI.md)	
 	- [AGENTS.md](../AGENTS.md) 
 	- Las especificaciones por etapas:
-		> [02_especificaciones_v0.md](../01_Documentacion/02_especificaciones_v0.md)
+		> [02_Especificaciones_v0.md](../01_Documentacion/02_Especificaciones_v0.md)
 		> [03_especificaciones_Final.md](../01_Documentacion/03_especificaciones_Final.md)
 
 	- El índice de Prompts:
