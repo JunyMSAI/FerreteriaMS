@@ -43,24 +43,25 @@
 	- utilicé Streamlit Community Cloud para el despliegue de pruebas y de la aplicación.	
 
 2. **Fichero de contexto del agente:** 
-	- [GEMINI.md](../GEMINI.md)	
-	- [AGENTS.md](../AGENTS.md) 
+	- [GEMINI.md](./GEMINI.md)	
+	- [AGENTS.md](./AGENTS.md) 
 	- Las especificaciones por etapas:
-		> [02_Especificaciones_v0.md](../01_Documentacion/02_Especificaciones_v0.md)
-		> [03_especificaciones_Final.md](../01_Documentacion/03_especificaciones_Final.md)
+		> [02_Especificaciones_v0.md](./01_Documentacion/02_Especificaciones_v0.md)
+
+		> [03_especificaciones_Final.md](./01_Documentacion/03_especificaciones_Final.md)
 
 	- El índice de Prompts:
-		> [04_Definicion_de_Prompts.md](../01_Documentacion/04_Definicion_de_Prompts.md)		
+		> [04_Definicion_de_Prompts.md](./01_Documentacion/04_Definicion_de_Prompts.md)		
 
 3. **Prompts clave:** seleccioné tres prompts oficiales relevantes para mostrar cómo guie al agente.
 
-	- **P04 — Búsqueda pública:** [04_Busqueda_Publica.md](../02_Prompts/04_Busqueda_Publica.md),
+	- **P04 — Búsqueda pública:** [04_Busqueda_Publica.md](./02_Prompts/04_Busqueda_Publica.md),
     Construir la búsqueda de productos por nombre con coincidencias parciales, normalización de texto, relevancia y pagina en Streamlit.
   
-	- **P16 — Integración funcional de Gemini:** [16_Integracion_Gemini.md](../02_Prompts/16_Integracion_Gemini.md),
+	- **P16 — Integración funcional de Gemini:** [16_Integracion_Gemini.md](./02_Prompts/16_Integracion_Gemini.md),
     Desarrollar el asistente de texto para asesoría de ferretería, con contexto del inventario, restricciones temáticas, advertencias y límites de consumo.
 	
-	- **P18 — Página independiente de Gemini:** [18_Pagina_Independiente_Gemini.md](../02_Prompts/18_Pagina_Independiente_Gemini.md),
+	- **P18 — Página independiente de Gemini:** [18_Pagina_Independiente_Gemini.md](./02_Prompts/18_Pagina_Independiente_Gemini.md),
     Separar el chat de la búsqueda pública y trasladarlo a una sección propia.
 	
 4. **Qué delegué al agente y qué revisé a mano:** 
@@ -90,16 +91,16 @@
 ## Capturas
 
 **1. Aplicación funcionando — Inicio y búsqueda pública**  
-![Pantalla de búsqueda de FerreteríaMS](../06_Imagenes/inicio.png)
+![Pantalla de búsqueda de FerreteríaMS](./06_Imagenes/inicio.png)
 
 **2. Aplicación funcionando — Configuración del inventario**  
-![Prueba de administración de inventario](../06_Imagenes/prueba_configuracion.png)
+![Prueba de administración de inventario](./06_Imagenes/prueba_configuracion.png)
 
 **4. Trabajo con IA — Agente de desarrollo creando la página independiente del asistente**  
-![Antigravity ejecutando una tarea aprobada](../06_Imagenes/antigravity.png)
+![Antigravity ejecutando una tarea aprobada](./06_Imagenes/antigravity.png)
 
 **5. Prueba — Consulta el asistente en su página independiente**  
-![Respuesta del Asistente de FerreteríaMS](../06_Imagenes/asistente.png)
+![Respuesta del Asistente de FerreteríaMS](./06_Imagenes/asistente.png)
 
 **6. Caso límite — Error controlado de la API**  
-![Aviso ante un error de Gemini](../06_Imagenes/caso_limite.png)
+![Aviso ante un error de Gemini](./06_Imagenes/caso_limite.png)
