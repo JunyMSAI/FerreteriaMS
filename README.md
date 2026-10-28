@@ -50,10 +50,10 @@
 
 		> [03_Especificaciones_Final.md](./01_Documentacion/03_Especificaciones_Final.md)
 
-	- El índice de Prompts:
-		> [04_Definicion_de_Prompts.md](./01_Documentacion/04_Definicion_de_Prompts.md)		
 
 3. **Prompts clave:** seleccioné tres prompts oficiales relevantes para mostrar cómo guie al agente.
+	- El índice de Prompts:
+		> [04_Definicion_de_Prompts.md](./01_Documentacion/04_Definicion_de_Prompts.md)	
 
 	- **P04 — Búsqueda pública:** [04_Busqueda_Publica.md](./02_Prompts/04_Busqueda_Publica.md),
     Construir la búsqueda de productos por nombre con coincidencias parciales, normalización de texto, relevancia y pagina en Streamlit.
