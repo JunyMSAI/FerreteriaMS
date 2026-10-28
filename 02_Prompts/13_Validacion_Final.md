@@ -158,4 +158,4 @@ Al completar la verificación:
 
 No iniciar automáticamente `03_Especificaciones_Final.md`.
 
-**Fin del Prompt 13.**
+**Fin del Prompt 13, No comiences el Prompt 14.**

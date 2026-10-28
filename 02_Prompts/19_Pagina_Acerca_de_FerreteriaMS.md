@@ -230,4 +230,4 @@ P19 se considerará listo para revisión cuando:
 7. Las pruebas focalizadas sean satisfactorias.
 8. Antigravity entregue el informe correspondiente.
 
-**Al finalizar, detenerse y esperar la aprobación del usuario antes de registrar o publicar los cambios.**
+**Al finalizar, detenerse y esperar mi aprobación.**

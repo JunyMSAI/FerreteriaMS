@@ -161,4 +161,4 @@ P18 estará preparado para aprobación cuando:
 6. Las funcionalidades existentes sigan operando.
 7. Las pruebas focalizadas resulten satisfactorias.
 
-**No iniciar otras funcionalidades sin autorización.**
+**No iniciar otras funcionalidades sin mi autorización.**

@@ -136,4 +136,4 @@ P17 podrá cerrarse cuando:
 
 **Al completar la tarea, detenerse para revisión y aprobación.**
 
-No iniciar funcionalidades nuevas ni otras etapas sin autorización.
+No iniciar funcionalidades nuevas ni otras etapas sin mi autorización.

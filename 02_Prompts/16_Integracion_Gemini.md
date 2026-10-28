@@ -229,4 +229,4 @@ P16 podrá considerarse implementado cuando:
 
 La **activación real de Gemini** y su comprobación en Streamlit Community Cloud requerirán una autorización posterior.
 
-**No comenzar tareas posteriores sin aprobación del responsable.**
+**No comenzar tareas posteriores sin mi aprobación.**
