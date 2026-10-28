@@ -48,7 +48,7 @@
 	- Las especificaciones por etapas:
 		> [02_Especificaciones_v0.md](./01_Documentacion/02_Especificaciones_v0.md)
 
-		> [03_especificaciones_Final.md](./01_Documentacion/03_especificaciones_Final.md)
+		> [03_Especificaciones_Final.md](./01_Documentacion/03_Especificaciones_Final.md)
 
 	- El índice de Prompts:
 		> [04_Definicion_de_Prompts.md](./01_Documentacion/04_Definicion_de_Prompts.md)		
