@@ -2,7 +2,7 @@
 
 **Proyecto:** FerreteríaMS  
 **Documento:** `01_Documentacion/04_Definicion_de_Prompts.md`  
-**Cobertura:** Prompts aprobados P01–P18
+**Cobertura:** Prompts aprobados P01–P19
 
 ## Índice informativo de consulta rápida.
 
