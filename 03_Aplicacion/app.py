@@ -333,8 +333,7 @@ TEXTO_BOTON_VOLVER_INICIO_GEMINI: str = "🔍 Ir a búsqueda de productos"
 ALTURA_CONTENEDOR_CHAT_GEMINI_PX: int = 460
 TITULO_SECCION_ADMIN_LOGIN: str = "Acceso de administración"
 SUBTITULO_SECCION_ADMIN_LOGIN: str = (
-    "Ingresa con tu usuario y contraseña para acceder al panel administrativo de configuración de productos.\n\n"
-    "El usuario y la contraseña de prueba para configurar productos están incluidas en el documento de README."
+    "Ingresa con tu usuario y contraseña para acceder al panel administrativo de configuración de productos.\n\n"   
 )
 TITULO_SECCION_PRODUCTOS_ADMIN: str = "Configuración de productos — Panel administrativo"
 TEXTO_BOTON_LOGIN_ADMIN: str = "🔐 Iniciar sesión"

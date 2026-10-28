@@ -23,7 +23,7 @@
 1. **Buscar un producto:** entra a la **Pantalla de Inicio**, escribe el nombre del producto que estas buscando y la aplicación normaliza acentos y mayúsculas y organiza los resultados por relevancia.
 2. **Conocer sus detalles:** selecciona un producto para ver su descripción, categoría y ubicación principal (rack, columna, nivel y posición), así como ubicaciones adicionales cuando existan.
 3. **Consultar al asistente:** entra a la **Pantalla de Asistente con IA** y pregunta en español o inglés sobre la herramienta, materiales, reparaciones o proyectos. Según lo que le pregunte la aplicación va asesorandote en cómo puedo hacer las cosas ya sea con productos de la tienda o fuera de la tienda.
-4. **Administrar el catálogo:** mediante la **Pantalla de Configuración** y después de autenticarse, Usuario de prueba "administrator" y contraseña "admin". puedes modificar productos, categorías y ubicaciones; también activar o desactivar productos sin borrar sus registros.
+4. **Administrar el catálogo:** mediante la **Pantalla de Configuración** y después de autenticarse, puedes modificar productos, categorías y ubicaciones; también activar o desactivar productos sin borrar sus registros.
 5. **Guardar los cambios:** la aplicación trabaja con un inventario Excel de cuatro hojas y utiliza GitHub para leer el archivo y mediante el flujo administrativo autorizado, registrar cambios validados.
 6. **Consultar información general:** la página **Acerca de** explica el propósito, las funciones y el uso de FerreteríaMS.
 7. La consulta pública no requiere una cuenta administrativa. La ubicación mostrada corresponde al registro del inventario.
