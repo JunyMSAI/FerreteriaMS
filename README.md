@@ -4,7 +4,7 @@
 
 **Autor/a:** Concepción Morales Surén
 
-## Pitch
+## Pitch 
 1. En una ferretería, encontrar un artículo, saber exactamente dónde está ubicado y saber cómo se usa el artículo de forma correcta puede consumir mucho tiempo.
 2. El problema normalmente lo tienen clientes no especializados, que les gusta resolver y arreglar las cosas en su casa, patio y oficina por cuenta propia.
 3. La aplicación brindara la localización o ubicación del producto o accesorios de forma rápida en los (rack o estantería) dentro de la tienda usando el inventario de la ferretería. 
