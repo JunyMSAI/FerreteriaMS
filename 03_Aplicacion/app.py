@@ -4045,8 +4045,7 @@ def _renderizar_seccion_administrativa_productos(
                     st.rerun()
         else:
             st.info(
-                f"🟢 **{MENSAJE_INVENTARIO_DISPONIBLE_EDICION_LOCAL}** "
-                f"(SHA base remoto: `{sha_presentacion}`)."
+                f"🟢 **{MENSAJE_INVENTARIO_DISPONIBLE_EDICION_LOCAL}**"               
             )
             if (
                 isinstance(ultima_publicacion, ResultadoPublicacionGitHub)
