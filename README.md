@@ -96,11 +96,11 @@
 **2. Aplicación funcionando — Configuración del inventario**  
 ![Prueba de administración de inventario](./06_Imagenes/prueba_configuracion.png)
 
-**4. Trabajo con IA — Agente de desarrollo creando la página independiente del asistente**  
+**3. Trabajo con IA — Agente de desarrollo creando la página independiente del asistente**  
 ![Antigravity ejecutando una tarea aprobada](./06_Imagenes/antigravity.png)
 
-**5. Prueba — Consulta el asistente en su página independiente**  
+**4. Prueba — Consulta el asistente en su página independiente**  
 ![Respuesta del Asistente de FerreteríaMS](./06_Imagenes/asistente.png)
 
-**6. Caso límite — Error controlado de la API**  
+**5. Caso límite — Error controlado de la API**  
 ![Aviso ante un error de Gemini](./06_Imagenes/caso_limite.png)
