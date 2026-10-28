@@ -3972,7 +3972,7 @@ def _renderizar_seccion_administrativa_productos(
                 st.warning(
                     f"🟡 **Cambios locales pendientes de guardar (no confirmados en GitHub):** "
                     f"{espacio_actual.total_productos_modificados_localmente} producto(s) modificado(s) "
-                    f"en esta sesión · SHA base remoto: `{sha_presentacion}`."
+                    f"en esta sesión."
                 )
             st.info(
                 f"🧪 **Copia demostrativa en memoria (`[DEMOSTRATIVO]`):** "
