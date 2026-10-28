@@ -2,7 +2,6 @@
 
 **Proyecto:** FerreteríaMS v0   
 **Prioridad:** ALTA — Entrega próxima  
-**Modalidad:** Verificación rápida, sin refactorizaciones innecesarias.
 
 ## Objetivo
 

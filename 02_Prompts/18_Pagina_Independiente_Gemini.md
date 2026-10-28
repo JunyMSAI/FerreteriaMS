@@ -3,7 +3,6 @@
 **Proyecto:** FerreteríaMS — Versión Final  
 **TASK_ID:** FERMS-FINAL-P18  
 **TASK_TITLE:** Interfaz independiente y navegación del Asistente Gemini  
-**TASK_LEVEL:** Estándar — Cambio focalizado de interfaz 
 
 ## 1. Objetivo
 

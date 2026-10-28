@@ -3,9 +3,6 @@
 **Proyecto:** FerreteríaMS — Versión Final  
 **TASK_ID:** FERMS-FINAL-P17  
 **TASK_TITLE:** Activación y validación real de Gemini  
-**TASK_LEVEL:** Estándar — Activación controlada  
-**Estado:** Pendiente de aprobación y ejecución  
-**Agente:** Antigravity / Gemini
 
 ## 1. Objetivo
 

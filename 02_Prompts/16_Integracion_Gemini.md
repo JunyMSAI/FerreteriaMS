@@ -3,7 +3,6 @@
 **Proyecto:** FerreteríaMS — Versión Final  
 **TASK_ID:** FERMS-FINAL-P16  
 **TASK_TITLE:** Integración de Gemini AI con FerreteríaMS  
-**TASK_LEVEL:** Estándar — implementación focalizada  
 
 
 ## 1. Objetivo

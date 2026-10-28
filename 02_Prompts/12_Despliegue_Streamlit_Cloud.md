@@ -3,11 +3,6 @@
 **Proyecto:** FerreteríaMS v0  
 **TASK_ID:** FERMS-V0-P12  
 **TASK_TITLE:** Puesta en funcionamiento real, navegación e integración GitHub  
-**TASK_LEVEL:** Estándar — ejecución rápida y focalizada  
-**TASK_DATE:** Completar al iniciar la ejecución (hora local del responsable)  
-**TASK_TIME:** Completar al iniciar la ejecución (hora local del responsable)  
-**Estado:** DOCUMENTO PROPUESTO — requiere aprobación y commit antes de ejecutarse  
-
 
 ## 1. Objetivo y punto de partida
 

@@ -3,7 +3,6 @@
 **Proyecto:** FerreteríaMS — Versión Final  
 **TASK_ID:** FERMS-FINAL-P14  
 **TASK_TITLE:** Administración de categorías y ubicaciones  
-**TASK_LEVEL:** Estándar — implementación focalizada  
 
 ## 1. Objetivo
 

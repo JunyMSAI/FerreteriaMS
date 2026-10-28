@@ -3,7 +3,6 @@
 **Proyecto:** FerreteríaMS — Versión Final  
 **TASK_ID:** FERMS-FINAL-P15  
 **TASK_TITLE:** Estados activo/inactivo de productos  
-**TASK_LEVEL:** Estándar — implementación focalizada  
 
 
 ## 1. Objetivo

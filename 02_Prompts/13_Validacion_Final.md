@@ -3,9 +3,6 @@
 **Proyecto:** FerreteríaMS v0  
 **TASK_ID:** FERMS-V0-P13  
 **TASK_TITLE:** Validación final y cierre de entrega  
-**TASK_LEVEL:** Rápido — Validación focalizada  
-**TASK_DATE:** Completar con la fecha local al ejecutar  
-**TASK_TIME:** Completar con la hora local al ejecutar  
 
 ---
 
