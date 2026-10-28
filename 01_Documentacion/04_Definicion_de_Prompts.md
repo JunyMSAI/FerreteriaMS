@@ -52,3 +52,6 @@ Prompts: Objetivo y necesidad atendida
     Separar el chat de la búsqueda pública y trasladarlo a una sección propia.
 - **P19 — Página Acerca de FerreteriaMS:** [19_Pagina_Acerca_de_FerreteriaMS.md](../02_Prompts/19_Pagina_Acerca_de_FerreteriaMS.md),
     Crear la página informativa relacionada a la FerreteriaMS.
+
+    - [GEMINI.md](../FerreteriaMS/GEMINI.md)
+    - [GEMINI.md](./FerreteriaMS/GEMINI.md)
