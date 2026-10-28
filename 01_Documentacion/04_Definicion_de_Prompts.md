@@ -14,7 +14,7 @@ Describir de manera breve para qué se creó cada prompt aprobado, qué necesida
 
 Prompts: Objetivo y necesidad atendida
 
-- **P01 — Verificación inicial123**  [`02_Promtpts/01_Verificacion_Inicial.md`]
+- **P01 — Verificación inicial123**  (02_Promtpts/01_Verificacion_Inicial.md)
     Revisar, en modo solo lectura, las instrucciones del agente y los documentos de concepto y especificaciones antes de comenzar el desarrollo.
 - **P02 — Motor de inventario**  `02_Motor_Inventario.md`
     Preparar dependencias y construir el motor para leer y validar el inventario Excel de cuatro hojas, con reglas de integridad y protección de datos existentes.
