@@ -334,7 +334,7 @@ ALTURA_CONTENEDOR_CHAT_GEMINI_PX: int = 460
 TITULO_SECCION_ADMIN_LOGIN: str = "Acceso de administración"
 SUBTITULO_SECCION_ADMIN_LOGIN: str = (
     "Ingresa con tu usuario y contraseña para acceder al panel administrativo de configuración de productos.\n\n"
-    "NOTA: El usuario y la contraseña están incluidas en el documento de README."
+    "El usuario y la contraseña de prueba para configurar productos están incluidas en el documento de README."
 )
 TITULO_SECCION_PRODUCTOS_ADMIN: str = "Configuración de productos — Panel administrativo"
 TEXTO_BOTON_LOGIN_ADMIN: str = "🔐 Iniciar sesión"
