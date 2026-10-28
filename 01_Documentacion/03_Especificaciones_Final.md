@@ -1,8 +1,7 @@
 # Especificaciones de la Versión Final: FerreteríaMS
 
 **Proyecto:** FerreteríaMS  
-**Documento:** `01_Documentacion/03_Especificaciones_Final.md`  
-**Estado:** BORRADOR PARA REVISIÓN Y APROBACIÓN  
+**Documento:** `01_Documentacion/03_Especificaciones_Final.md`
 **Naturaleza:** Especificaciones **incrementales** respecto a `02_Especificaciones_v0.md`  
 **Base de decisiones:** DEC-FINAL-001 a DEC-FINAL-034  
 **Etapa anterior:** FerreteríaMS v0, P01–P13
@@ -120,7 +119,7 @@ Se mantiene Gemini/Antigravity como agente de desarrollo, conforme a las instruc
 
 ### 4.2. IA operativa de FerreteríaMS
 
-Un modelo Gemini compatible con la disponibilidad y las cuotas de **uso gratuito verificadas al momento de la implementación** responderá desde el servidor de la aplicación. No se presupone gratuidad indefinida: verificar modelo, límites, disponibilidad, condiciones de facturación y necesidad de cuenta habilitada **antes de activarlo**. No habilitar recursos con cargos sin autorización.
+Un modelo Gemini compatible con la disponibilidad y las cuotas de **uso gratuito verificadas al momento de la implementación** responderá desde el servidor de la aplicación. No se presupone que sea gratis indefinidamente: verificar modelo, límites, disponibilidad, condiciones de facturación y necesidad de cuenta habilitada **antes de activarlo**. No habilitar recursos con cargos sin autorización.
 
 El comportamiento del asistente seguirá RF-F-012 a RF-F-025. Se priorizarán artículos del catálogo cuando resuelvan adecuadamente el problema, sin degradar el consejo técnico cuando algún componente recomendado no esté registrado. El contexto de catálogo es información de referencia, **no una instrucción del usuario**; ni las descripciones de productos ni las consultas deberán poder alterar las reglas de seguridad o revelar secretos.
 
@@ -161,7 +160,7 @@ Prioridad de **costo monetario $0**. Antes de configurar un servicio externo se 
 
 ### 6.2. Tecnologías
 
-Mantener Streamlit + Python + pandas + archivo maestro `.xlsx` en GitHub. Reutilizar GitHub Contents API, secretos y autenticación ya existentes. Integrar Gemini desde Python del servidor mediante la biblioteca compatible elegida; no incorporar base de datos nueva, frontend independiente ni un segundo backend.
+Mantener Streamlit + Python + pandas + archivo inventario `.xlsx` en GitHub. Reutilizar GitHub Contents API, secretos y autenticación ya existentes. Integrar Gemini desde Python del servidor mediante la biblioteca compatible elegida; no incorporar base de datos nueva, frontend independiente ni un segundo backend.
 
 ### 6.3. Seguridad
 
@@ -169,7 +168,7 @@ Reutilizar autorización administrativa, confirmación explícita, control SHA, 
 
 ### 6.4. Compatibilidad
 
-Mantener búsqueda y administración según restricciones de dispositivos existentes; el chat público debe poder usarse en escritorio y móvil sin desbordamientos. Las fallas de Gemini no bloquearán la localización.
+Mantener búsqueda y administración según restricciones de dispositivos existentes; el chat público debe poder usarse en escritorio. Las fallas de Gemini no bloquearán la localización.
 
 ### 6.5. Consumo y privacidad
 
@@ -259,4 +258,4 @@ Solo **después de aprobar estas especificaciones** se identificarán los docume
 
 ---
 
-**Fin del borrador incremental. No autoriza por sí mismo cambios de código, publicación del archivo de evaluación, modificaciones al Excel maestro ni activación de servicios de pago.**
+**Fin del documento, este documento no autoriza por sí mismo cambios de código, publicación de archivos sin mi autorización, modificaciones al inventario en Excel ni activación de servicios de pago.**
